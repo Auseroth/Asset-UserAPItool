@@ -16,7 +16,7 @@ To add a new provider, you'll:
 
 ---
 
-```## Step 1: Create the Provider Class
+## Step 1: Create the Provider Class
 
 **File:** `LdapCloudSync.Core/Providers/YourProviderClient.cs`
 
