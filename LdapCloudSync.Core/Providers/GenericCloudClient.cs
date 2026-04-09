@@ -123,12 +123,18 @@ public sealed class GenericCloudClient : ICloudClient, IDisposable
         {
             try
             {
+                // Add Reftab category ID if configured
+                if (categoryConfig.TargetCategoryId > 0 && !record.ContainsKey("cid"))
+                {
+                    record["cid"] = categoryConfig.TargetCategoryId;
+                }
+
                 var matchValue = record.TryGetValue(categoryConfig.CloudMatchField, out var mv)
                     ? mv?.ToString() ?? string.Empty
                     : string.Empty;
 
                 var existingId = FindExistingRecordId(existingRecords, categoryConfig, matchValue);
-
+                
                 if (existingId is not null)
                 {
                     // Update existing record
@@ -415,6 +421,52 @@ public sealed class GenericCloudClient : ICloudClient, IDisposable
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..maxLength] + "...";
+
+    /// <summary>
+    /// Fetches the list of asset categories from Reftab.
+    /// Returns list of (id, name) tuples.
+    /// </summary>
+    public async Task<List<(int Id, string Name)>> GetAssetCategoriesAsync()
+    {
+        if (!_target.Connection.BaseUrl.Contains("reftab", StringComparison.OrdinalIgnoreCase))
+        {
+            _log.Warning("GetAssetCategories called on non-Reftab target");
+            return [];
+        }
+
+        try
+        {
+            var request = BuildRequest(HttpMethod.Get, "/categories");
+            var response = await _httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = JsonNode.Parse(json);
+            
+            if (doc is not JsonArray categories)
+                return [];
+
+            var result = new List<(int, string)>();
+            foreach (var cat in categories.OfType<JsonObject>())
+            {
+                if (cat.TryGetPropertyValue("id", out var idNode) && 
+                    cat.TryGetPropertyValue("name", out var nameNode) &&
+                    idNode?.GetValue<int>() is int id &&
+                    nameNode?.ToString() is string name)
+                {
+                    result.Add((id, name));
+                }
+            }
+
+            _log.Information("Discovered {Count} asset categories from Reftab", result.Count);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to fetch asset categories");
+            return [];
+        }
+    }
 
     public void Dispose() => _httpClient.Dispose();
 }

@@ -122,4 +122,10 @@ public sealed class SyncCategoryConfig
     /// Field mappings: AD attribute -> Cloud field, with optional transform.
     /// </summary>
     public List<FieldMapping> FieldMappings { get; set; } = [];
+
+    /// <summary>
+    /// For Reftab: the category ID (cid) to assign to new assets.
+    /// E.g., 1 = Laptop, 2 = Desktop. Leave 0 to omit from payload.
+    /// </summary>
+    public int TargetCategoryId { get; set; } = 0;
 }

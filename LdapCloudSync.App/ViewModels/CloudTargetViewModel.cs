@@ -29,6 +29,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
         AddUserMappingCommand = new RelayCommand(() => UserMappings.Add(new FieldMappingViewModel()));
         RemoveAssetMappingCommand = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) AssetMappings.Remove(m); });
         RemoveUserMappingCommand = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) UserMappings.Remove(m); });
+        RefreshCategoriesCommand = new AsyncRelayCommand(RefreshCategoriesAsync);
     }
 
     #region Identity & Preset
@@ -389,6 +390,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public ICommand AddUserMappingCommand { get; }
     public ICommand RemoveAssetMappingCommand { get; }
     public ICommand RemoveUserMappingCommand { get; }
+    public ICommand RefreshCategoriesCommand { get; }
 
     #endregion
 
@@ -665,6 +667,13 @@ public sealed class CloudTargetViewModel : ViewModelBase
         UsersIntervalHours = Config.Schedule.UsersSchedule.Interval.TotalHours;
         UsersCronExpression = Config.Schedule.UsersSchedule.CronExpression;
         UsersDailyAtTime = Config.Schedule.UsersSchedule.DailyAtTime;
+
+        // Assets category
+        AssetsTargetCategoryId = Config.Assets.TargetCategoryId;
+        if (ShowCategorySelector && AssetCategories.Count == 0)
+        {
+            _ = RefreshCategoriesAsync(); // Load categories in background
+        }
     }
 
     public void ApplyToConfig()
@@ -693,6 +702,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Assets.AdMatchField = AssetsAdMatchField;
         Config.Assets.CloudMatchField = AssetsCloudMatchField;
         Config.Assets.FieldMappings = AssetMappings.Select(m => m.ToModel()).ToList();
+        Config.Assets.TargetCategoryId = AssetsTargetCategoryId;
 
         Config.Users.Enabled = UsersEnabled;
         Config.Users.GetEndpoint = UsersGetEndpoint;
@@ -725,6 +735,48 @@ public sealed class CloudTargetViewModel : ViewModelBase
     }
 
     #endregion
+
+    // Add after existing properties
+
+    public bool ShowCategorySelector => BaseUrl.Contains("reftab", StringComparison.OrdinalIgnoreCase);
+
+    public ObservableCollection<CategoryItem> AssetCategories { get; } = [];
+
+    private int _assetsTargetCategoryId;
+    public int AssetsTargetCategoryId
+    {
+        get => _assetsTargetCategoryId;
+        set => SetProperty(ref _assetsTargetCategoryId, value);
+    }
+
+    private async Task RefreshCategoriesAsync()
+    {
+        try
+        {
+            var targetConfig = BuildTargetConfig();
+            using var client = new GenericCloudClient(targetConfig);
+            var categories = await client.GetAssetCategoriesAsync();
+
+            AssetCategories.Clear();
+            AssetCategories.Add(new CategoryItem { Id = 0, Name = "(None - use Reftab default)" });
+            foreach (var (id, name) in categories)
+            {
+                AssetCategories.Add(new CategoryItem { Id = id, Name = name });
+            }
+
+            CloudConnectionStatus = $"Loaded {categories.Count} categories.";
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Category fetch failed: {ex.Message}";
+        }
+    }
+
+    public class CategoryItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
 }
 
 /// <summary>
