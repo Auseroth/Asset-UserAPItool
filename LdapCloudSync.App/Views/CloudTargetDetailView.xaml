@@ -2,7 +2,6 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="clr-namespace:LdapCloudSync.Core.Models;assembly=LdapCloudSync.Core">
-
     <StackPanel>
 
         <!-- Identity & Preset -->
@@ -327,25 +326,47 @@
                 </TextBlock>
 
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <RadioButton Content="Interval" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Interval}"
+                    <RadioButton Content="Every X hours" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Interval}"
                                  Margin="0,0,16,0" />
-                    <RadioButton Content="Daily At" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
+                    <RadioButton Content="Daily at specific time" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
                                  Margin="0,0,16,0" />
-                    <RadioButton Content="Cron" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}" />
+                    <RadioButton Content="Advanced (Cron)" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}"
+                                 ToolTip="Cron expressions allow precise scheduling like 'every weekday at 3am'. Format: minute hour day month weekday" />
                 </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Every" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <!-- Interval input -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Interval}">
+                    <TextBlock Text="Run every" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <TextBox Text="{Binding PrimaryIntervalHours, UpdateSourceTrigger=PropertyChanged}"
                              Width="60" VerticalAlignment="Center" />
-                    <TextBlock Text="hours" VerticalAlignment="Center" Margin="6,0,20,0" />
-                    <TextBlock Text="Cron:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBox Text="{Binding PrimaryCronExpression, UpdateSourceTrigger=PropertyChanged}"
-                             Width="150" VerticalAlignment="Center" />
+                    <TextBlock Text="hours" VerticalAlignment="Center" Margin="6,0,0,0" />
+                </StackPanel>
+
+                <!-- Daily At input -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=DailyAt}">
+                    <TextBlock Text="Run daily at" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox Text="{Binding PrimaryDailyAtTimeText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="80" VerticalAlignment="Center"
+                             ToolTip="24-hour format, e.g. 02:00 or 14:30" />
+                    <TextBlock Text="(24hr format)" VerticalAlignment="Center" Margin="6,0,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
+                </StackPanel>
+
+                <!-- Cron input -->
+                <StackPanel Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Cron expression" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox Text="{Binding PrimaryCronExpression, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="200" VerticalAlignment="Center" FontFamily="Consolas" />
+                    </StackPanel>
+                    <TextBlock Text="Format: min hour day month weekday | Examples: '0 2 * * *' = daily 2am | '0 3 * * 1-5' = weekdays 3am | '0 */6 * * *' = every 6 hours"
+                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <!-- Users Schedule (only when decoupled) -->
-                <StackPanel Margin="0,12,0,0">
+                <StackPanel Margin="0,16,0,0">
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed" />
@@ -359,20 +380,43 @@
 
                     <TextBlock Text="Users Schedule" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <RadioButton Content="Interval" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Interval}"
+                        <RadioButton Content="Every X hours" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Interval}"
                                      Margin="0,0,16,0" />
-                        <RadioButton Content="Daily At" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
+                        <RadioButton Content="Daily at specific time" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
                                      Margin="0,0,16,0" />
-                        <RadioButton Content="Cron" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}" />
+                        <RadioButton Content="Advanced (Cron)" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}"
+                                     ToolTip="Cron expressions allow precise scheduling like 'every weekday at 3am'. Format: minute hour day month weekday" />
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Every" VerticalAlignment="Center" Margin="0,0,6,0" />
+
+                    <!-- Interval input -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Interval}">
+                        <TextBlock Text="Run every" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <TextBox Text="{Binding UsersIntervalHours, UpdateSourceTrigger=PropertyChanged}"
                                  Width="60" VerticalAlignment="Center" />
-                        <TextBlock Text="hours" VerticalAlignment="Center" Margin="6,0,20,0" />
-                        <TextBlock Text="Cron:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                        <TextBox Text="{Binding UsersCronExpression, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="150" VerticalAlignment="Center" />
+                        <TextBlock Text="hours" VerticalAlignment="Center" Margin="6,0,0,0" />
+                    </StackPanel>
+
+                    <!-- Daily At input -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=DailyAt}">
+                        <TextBlock Text="Run daily at" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox Text="{Binding UsersDailyAtTimeText, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="80" VerticalAlignment="Center"
+                                 ToolTip="24-hour format, e.g. 02:00 or 14:30" />
+                        <TextBlock Text="(24hr format)" VerticalAlignment="Center" Margin="6,0,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
+                    </StackPanel>
+
+                    <!-- Cron input -->
+                    <StackPanel Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Cron expression" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox Text="{Binding UsersCronExpression, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="200" VerticalAlignment="Center" FontFamily="Consolas" />
+                        </StackPanel>
+                        <TextBlock Text="Format: min hour day month weekday | Examples: '0 2 * * *' = daily 2am | '0 3 * * 1-5' = weekdays 3am"
+                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </StackPanel>
             </StackPanel>

@@ -30,8 +30,9 @@
             </DockPanel>
         </Border>
 
-        <!-- Right: Selected target detail -->
-        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+        <!-- Right: Selected target detail (hidden when nothing selected) -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                      Visibility="{Binding SelectedTarget, Converter={StaticResource NullToCollapsed}}">
             <ContentControl Content="{Binding SelectedTarget}">
                 <ContentControl.ContentTemplate>
                     <DataTemplate>
@@ -40,5 +41,12 @@
                 </ContentControl.ContentTemplate>
             </ContentControl>
         </ScrollViewer>
+
+        <!-- Placeholder when no target selected -->
+        <TextBlock Grid.Column="1"
+                   Text="Click '+ Add' to create a cloud target, or select one from the list."
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontSize="13" Foreground="{StaticResource TextSecondaryBrush}"
+                   Visibility="{Binding SelectedTarget, Converter={StaticResource NullToVisible}}" />
     </Grid>
 </UserControl>

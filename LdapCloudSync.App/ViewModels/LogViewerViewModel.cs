@@ -1,17 +1,28 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Input;
+using System.Windows.Threading;
 using LdapCloudSync.Core.Services;
 
 namespace LdapCloudSync.App.ViewModels;
 
-public sealed class LogViewerViewModel : ViewModelBase
+public sealed class LogViewerViewModel : ViewModelBase, IDisposable
 {
+    private readonly DispatcherTimer _autoRefreshTimer;
+
     public LogViewerViewModel()
     {
         RefreshLogFilesCommand = new RelayCommand(RefreshLogFiles);
         LoadSelectedLogCommand = new RelayCommand(LoadSelectedLog);
         RefreshLogFiles();
+
+        // Auto-refresh every 3 seconds when viewing logs
+        _autoRefreshTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+        _autoRefreshTimer.Tick += (_, _) => LoadSelectedLog();
+        _autoRefreshTimer.Start();
     }
 
     public ObservableCollection<string> LogFiles { get; } = [];
@@ -39,6 +50,7 @@ public sealed class LogViewerViewModel : ViewModelBase
 
     private void RefreshLogFiles()
     {
+        var previousSelection = SelectedLogFile;
         LogFiles.Clear();
         var logDir = LoggingService.GetLogDirectory();
 
@@ -56,7 +68,10 @@ public sealed class LogViewerViewModel : ViewModelBase
         foreach (var file in files)
             LogFiles.Add(file!);
 
-        if (LogFiles.Count > 0)
+        // Restore previous selection or pick the newest
+        if (previousSelection is not null && LogFiles.Contains(previousSelection))
+            SelectedLogFile = previousSelection;
+        else if (LogFiles.Count > 0)
             SelectedLogFile = LogFiles[0];
     }
 
@@ -82,11 +97,20 @@ public sealed class LogViewerViewModel : ViewModelBase
             // Use FileShare.ReadWrite so we can read logs the service is actively writing
             using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(stream);
-            LogContent = reader.ReadToEnd();
+            var newContent = reader.ReadToEnd();
+
+            // Only update if content changed (avoids TextBox scroll jump)
+            if (newContent != _logContent)
+                LogContent = newContent;
         }
         catch (Exception ex)
         {
             LogContent = $"Error reading log: {ex.Message}";
         }
+    }
+
+    public void Dispose()
+    {
+        _autoRefreshTimer.Stop();
     }
 }

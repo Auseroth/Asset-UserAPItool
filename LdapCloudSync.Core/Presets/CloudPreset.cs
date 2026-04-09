@@ -40,4 +40,19 @@ public sealed class PresetEndpoints
     public string PutEndpoint { get; init; } = string.Empty;
     public string ResponseItemsPath { get; init; } = "$";
     public string CloudIdField { get; init; } = "id";
+
+    /// <summary>
+    /// Default AD attribute to match records (e.g., "cn" for computers, "sAMAccountName" for users).
+    /// </summary>
+    public string AdMatchField { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Default cloud field to match against the AD match field.
+    /// </summary>
+    public string CloudMatchField { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Default field mappings pre-populated for this preset.
+    /// </summary>
+    public List<FieldMapping> DefaultMappings { get; init; } = [];
 }

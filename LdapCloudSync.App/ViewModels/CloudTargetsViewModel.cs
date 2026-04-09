@@ -14,7 +14,7 @@ public sealed class CloudTargetsViewModel : ViewModelBase
     {
         _configService = configService;
 
-        PresetNames = ["Generic", .. PresetRegistry.GetAllNames()];
+        PresetNames = ["Blank (REST)", .. PresetRegistry.GetAllNames()];
 
         AddTargetCommand = new RelayCommand(AddTarget);
         RemoveTargetCommand = new RelayCommand(RemoveTarget, () => SelectedTarget is not null);

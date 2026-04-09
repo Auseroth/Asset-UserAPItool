@@ -295,7 +295,11 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public TimeOnly PrimaryDailyAtTime
     {
         get => _primaryDailyAtTime;
-        set => SetProperty(ref _primaryDailyAtTime, value);
+        set
+        {
+            if (SetProperty(ref _primaryDailyAtTime, value))
+                OnPropertyChanged(nameof(PrimaryDailyAtTimeText));
+        }
     }
 
     private ScheduleType _usersScheduleType = ScheduleType.Interval;
@@ -323,7 +327,37 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public TimeOnly UsersDailyAtTime
     {
         get => _usersDailyAtTime;
-        set => SetProperty(ref _usersDailyAtTime, value);
+        set
+        {
+            if (SetProperty(ref _usersDailyAtTime, value))
+                OnPropertyChanged(nameof(UsersDailyAtTimeText));
+        }
+    }
+
+    /// <summary>
+    /// String wrapper for PrimaryDailyAtTime for easy TextBox binding. Format: HH:mm
+    /// </summary>
+    public string PrimaryDailyAtTimeText
+    {
+        get => PrimaryDailyAtTime.ToString("HH:mm");
+        set
+        {
+            if (TimeOnly.TryParse(value, out var time))
+                PrimaryDailyAtTime = time;
+        }
+    }
+
+    /// <summary>
+    /// String wrapper for UsersDailyAtTime for easy TextBox binding. Format: HH:mm
+    /// </summary>
+    public string UsersDailyAtTimeText
+    {
+        get => UsersDailyAtTime.ToString("HH:mm");
+        set
+        {
+            if (TimeOnly.TryParse(value, out var time))
+                UsersDailyAtTime = time;
+        }
     }
 
     #endregion
@@ -362,9 +396,43 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     private void ApplyPreset(string? presetName)
     {
-        if (string.IsNullOrEmpty(presetName) || presetName == "Generic")
+        if (string.IsNullOrEmpty(presetName) || presetName == "Blank (REST)")
         {
-            PresetOrigin = "Generic";
+            // Reset everything to blank defaults
+            BaseUrl = string.Empty;
+            AuthType = AuthType.ApiKey;
+            ApiKey = string.Empty;
+            ApiSecret = string.Empty;
+            ApiKeyHeader = "Authorization";
+            ApiKeyFormat = "Bearer {key}";
+            BasicUsername = string.Empty;
+            BasicPassword = string.Empty;
+            HmacAlgorithm = "HMACSHA256";
+            ContentType = "application/json";
+
+            AssetsEnabled = false;
+            AssetsGetEndpoint = string.Empty;
+            AssetsPostEndpoint = string.Empty;
+            AssetsPutEndpoint = string.Empty;
+            AssetsResponsePath = "$";
+            AssetsCloudIdField = "id";
+            AssetsAdMatchField = "cn";
+            AssetsCloudMatchField = string.Empty;
+            AssetMappings.Clear();
+
+            UsersEnabled = false;
+            UsersGetEndpoint = string.Empty;
+            UsersPostEndpoint = string.Empty;
+            UsersPutEndpoint = string.Empty;
+            UsersResponsePath = "$";
+            UsersCloudIdField = "id";
+            UsersAdMatchField = "sAMAccountName";
+            UsersCloudMatchField = string.Empty;
+            UserMappings.Clear();
+
+            _presetOrigin = "Blank (REST)";
+            OnPropertyChanged(nameof(PresetOrigin));
+            Name = $"Target {DateTime.Now:HHmmss}";
             return;
         }
 
@@ -373,7 +441,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
         var config = PresetRegistry.CreateFromPreset(preset);
 
-        // Apply preset values to VM properties
+        // Connection
         BaseUrl = config.Connection.BaseUrl;
         AuthType = config.Connection.AuthType;
         ApiKeyHeader = config.Connection.ApiKeyHeader;
@@ -381,32 +449,69 @@ public sealed class CloudTargetViewModel : ViewModelBase
         HmacAlgorithm = config.Connection.HmacAlgorithm;
         ContentType = config.Connection.ContentType;
 
+        // Assets endpoints
         AssetsGetEndpoint = config.Assets.GetEndpoint;
         AssetsPostEndpoint = config.Assets.PostEndpoint;
         AssetsPutEndpoint = config.Assets.PutEndpoint;
         AssetsResponsePath = config.Assets.ResponseItemsPath;
         AssetsCloudIdField = config.Assets.CloudIdField;
 
+        // Assets match fields
+        AssetsAdMatchField = config.Assets.AdMatchField;
+        AssetsCloudMatchField = config.Assets.CloudMatchField;
+
+        // Assets default mappings
+        AssetMappings.Clear();
+        foreach (var mapping in config.Assets.FieldMappings)
+        {
+            AssetMappings.Add(new FieldMappingViewModel
+            {
+                AdAttribute = mapping.AdAttributes.FirstOrDefault() ?? string.Empty,
+                CloudField = mapping.CloudField,
+                TransformExpression = mapping.TransformExpression ?? string.Empty,
+                DefaultValue = mapping.DefaultValue ?? string.Empty
+            });
+        }
+
+        // Users endpoints
         UsersGetEndpoint = config.Users.GetEndpoint;
         UsersPostEndpoint = config.Users.PostEndpoint;
         UsersPutEndpoint = config.Users.PutEndpoint;
         UsersResponsePath = config.Users.ResponseItemsPath;
         UsersCloudIdField = config.Users.CloudIdField;
 
-        PresetOrigin = preset.Name;
+        // Users match fields
+        UsersAdMatchField = config.Users.AdMatchField;
+        UsersCloudMatchField = config.Users.CloudMatchField;
+
+        // Users default mappings
+        UserMappings.Clear();
+        foreach (var mapping in config.Users.FieldMappings)
+        {
+            UserMappings.Add(new FieldMappingViewModel
+            {
+                AdAttribute = mapping.AdAttributes.FirstOrDefault() ?? string.Empty,
+                CloudField = mapping.CloudField,
+                TransformExpression = mapping.TransformExpression ?? string.Empty,
+                DefaultValue = mapping.DefaultValue ?? string.Empty
+            });
+        }
+
+        // Enable both categories by default when applying a preset
+        AssetsEnabled = true;
+        UsersEnabled = true;
+
+        _presetOrigin = preset.Name;
+        OnPropertyChanged(nameof(PresetOrigin));
         Name = preset.Name;
     }
 
-    /// <summary>
-    /// Checks if core structural fields have drifted from the preset template.
-    /// If they have, switches label to "Custom". Credential fields don't trigger this.
-    /// </summary>
     private void CheckPresetDrift()
     {
-        if (PresetOrigin is "Generic" or "Custom")
+        if (_presetOrigin is "Blank (REST)" or "Custom")
             return;
 
-        var preset = PresetRegistry.GetByName(PresetOrigin);
+        var preset = PresetRegistry.GetByName(_presetOrigin);
         if (preset is null) return;
 
         bool drifted = BaseUrl != preset.BaseUrl
@@ -415,7 +520,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
             || ContentType != preset.ContentType;
 
         if (drifted)
-            PresetOrigin = "Custom";
+        {
+            _presetOrigin = "Custom";
+            OnPropertyChanged(nameof(PresetOrigin));
+        }
     }
 
     #endregion
@@ -502,7 +610,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         Name = Config.Name;
         Enabled = Config.Enabled;
-        PresetOrigin = Config.PresetOrigin;
+
+        // Map legacy "Generic" to new name, bypass setter to avoid ApplyPreset
+        _presetOrigin = Config.PresetOrigin is "Generic" ? "Blank (REST)" : Config.PresetOrigin;
+        OnPropertyChanged(nameof(PresetOrigin));
 
         // Connection
         BaseUrl = Config.Connection.BaseUrl;

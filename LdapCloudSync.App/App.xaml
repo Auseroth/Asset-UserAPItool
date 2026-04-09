@@ -11,7 +11,10 @@
 
             <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
             <converters:EnumBoolConverter x:Key="EnumBoolConverter" />
+            <converters:EnumToVisibilityConverter x:Key="EnumToVis" />
             <converters:CountToVisibilityConverter x:Key="CountToVis" />
+            <converters:NullToCollapsedConverter x:Key="NullToCollapsed" />
+            <converters:NullToVisibleConverter x:Key="NullToVisible" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

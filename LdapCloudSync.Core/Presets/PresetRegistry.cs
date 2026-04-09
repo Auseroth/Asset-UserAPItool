@@ -4,7 +4,7 @@ using LdapCloudSync.Core.Models;
 
 /// <summary>
 /// Registry of all known cloud provider presets. 
-/// Presets are immutable templates — they are never modified at runtime.
+/// Presets are immutable templates -- they are never modified at runtime.
 /// </summary>
 public static class PresetRegistry
 {
@@ -29,7 +29,61 @@ public static class PresetRegistry
             PostEndpoint = "/assets",
             PutEndpoint = "/assets/{id}",
             ResponseItemsPath = "$",
-            CloudIdField = "id"
+            CloudIdField = "id",
+            AdMatchField = "cn",
+            CloudMatchField = "title",
+            DefaultMappings =
+            [
+                new FieldMapping
+                {
+                    CloudField = "title",
+                    AdAttributes = ["cn"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "asset_tag",
+                    AdAttributes = ["cn"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "sn",
+                    AdAttributes = ["serialNumber"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "os",
+                    AdAttributes = ["operatingSystem"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "os_ver",
+                    AdAttributes = ["operatingSystemVersion"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "location",
+                    AdAttributes = ["location"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "notes",
+                    AdAttributes = ["description"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                }
+            ]
         },
         Users = new PresetEndpoints
         {
@@ -37,7 +91,68 @@ public static class PresetRegistry
             PostEndpoint = "/loanees",
             PutEndpoint = "/loanees/{id}",
             ResponseItemsPath = "$",
-            CloudIdField = "id"
+            CloudIdField = "id",
+            AdMatchField = "sAMAccountName",
+            CloudMatchField = "username",
+            DefaultMappings =
+            [
+                new FieldMapping
+                {
+                    CloudField = "fn",
+                    AdAttributes = ["givenName"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "ln",
+                    AdAttributes = ["sn"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "username",
+                    AdAttributes = ["sAMAccountName"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "email",
+                    AdAttributes = ["mail"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "department",
+                    AdAttributes = ["department"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "title",
+                    AdAttributes = ["title"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "phone",
+                    AdAttributes = ["telephoneNumber"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "location",
+                    AdAttributes = ["l", "st"],
+                    TransformExpression = "{l}, {st}",
+                    DefaultValue = null
+                }
+            ]
         }
     };
 
@@ -55,7 +170,40 @@ public static class PresetRegistry
             PostEndpoint = "/hardware",
             PutEndpoint = "/hardware/{id}",
             ResponseItemsPath = "$.rows",
-            CloudIdField = "id"
+            CloudIdField = "id",
+            AdMatchField = "cn",
+            CloudMatchField = "name",
+            DefaultMappings =
+            [
+                new FieldMapping
+                {
+                    CloudField = "name",
+                    AdAttributes = ["cn"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "asset_tag",
+                    AdAttributes = ["cn"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "serial",
+                    AdAttributes = ["serialNumber"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "notes",
+                    AdAttributes = ["description"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                }
+            ]
         },
         Users = new PresetEndpoints
         {
@@ -63,7 +211,61 @@ public static class PresetRegistry
             PostEndpoint = "/users",
             PutEndpoint = "/users/{id}",
             ResponseItemsPath = "$.rows",
-            CloudIdField = "id"
+            CloudIdField = "id",
+            AdMatchField = "sAMAccountName",
+            CloudMatchField = "username",
+            DefaultMappings =
+            [
+                new FieldMapping
+                {
+                    CloudField = "first_name",
+                    AdAttributes = ["givenName"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "last_name",
+                    AdAttributes = ["sn"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "username",
+                    AdAttributes = ["sAMAccountName"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "email",
+                    AdAttributes = ["mail"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "department",
+                    AdAttributes = ["department"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "jobtitle",
+                    AdAttributes = ["title"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "phone",
+                    AdAttributes = ["telephoneNumber"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                }
+            ]
         }
     };
 
@@ -100,7 +302,18 @@ public static class PresetRegistry
                 PostEndpoint = preset.Assets.PostEndpoint,
                 PutEndpoint = preset.Assets.PutEndpoint,
                 ResponseItemsPath = preset.Assets.ResponseItemsPath,
-                CloudIdField = preset.Assets.CloudIdField
+                CloudIdField = preset.Assets.CloudIdField,
+                AdMatchField = preset.Assets.AdMatchField,
+                CloudMatchField = preset.Assets.CloudMatchField,
+                FieldMappings = preset.Assets.DefaultMappings
+                    .Select(m => new FieldMapping
+                    {
+                        CloudField = m.CloudField,
+                        AdAttributes = [.. m.AdAttributes],
+                        TransformExpression = m.TransformExpression,
+                        DefaultValue = m.DefaultValue
+                    })
+                    .ToList()
             },
             Users = new SyncCategoryConfig
             {
@@ -108,14 +321,24 @@ public static class PresetRegistry
                 PostEndpoint = preset.Users.PostEndpoint,
                 PutEndpoint = preset.Users.PutEndpoint,
                 ResponseItemsPath = preset.Users.ResponseItemsPath,
-                CloudIdField = preset.Users.CloudIdField
+                CloudIdField = preset.Users.CloudIdField,
+                AdMatchField = preset.Users.AdMatchField,
+                CloudMatchField = preset.Users.CloudMatchField,
+                FieldMappings = preset.Users.DefaultMappings
+                    .Select(m => new FieldMapping
+                    {
+                        CloudField = m.CloudField,
+                        AdAttributes = [.. m.AdAttributes],
+                        TransformExpression = m.TransformExpression,
+                        DefaultValue = m.DefaultValue
+                    })
+                    .ToList()
             }
         };
     }
 
     /// <summary>
     /// Checks if a config still matches its preset origin on core fields.
-    /// If not, it should be labeled "Custom".
     /// </summary>
     public static bool MatchesPreset(CloudTargetConfig config)
     {
