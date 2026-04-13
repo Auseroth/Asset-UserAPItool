@@ -99,15 +99,28 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
             _log.Information("Requesting {Count} AD attributes: {Attributes}",
                 requiredAttributes.Count, string.Join(", ", requiredAttributes));
 
-            // Step 2: Query Active Directory
+            // Step 2: Query Active Directory (with per-target overrides)
             cancellationToken.ThrowIfCancellationRequested();
             var objectType = category.ToLowerInvariant() == "assets"
                 ? DirectoryObjectType.Computer
                 : DirectoryObjectType.User;
 
-            using var directoryProvider = (IDisposable?)_directoryFactory(config.ActiveDirectory) as IDisposable;
-            var adProvider = _directoryFactory(config.ActiveDirectory);
+            var effectiveAdConfig = BuildEffectiveAdConfig(config.ActiveDirectory, categoryConfig, objectType);
+
+            _log.Information("AD source for {Target}/{Category}: SearchBase={SearchBase}, Filter={Filter}",
+                target.Name, category,
+                objectType == DirectoryObjectType.Computer
+                    ? effectiveAdConfig.ComputerSearchBase
+                    : effectiveAdConfig.UserSearchBase,
+                objectType == DirectoryObjectType.Computer
+                    ? effectiveAdConfig.ComputerFilter
+                    : effectiveAdConfig.UserFilter);
+
+            var adProvider = _directoryFactory(effectiveAdConfig);
             var adRecords = await adProvider.QueryAsync(objectType, requiredAttributes, maxRecords);
+
+            if (adProvider is IDisposable disposable)
+                disposable.Dispose();
 
             _log.Information("Retrieved {Count} records from AD", adRecords.Count);
 
@@ -126,7 +139,6 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
 
             // Step 4: Push to cloud
             cancellationToken.ThrowIfCancellationRequested();
-            using var cloudClient = _cloudFactory(target) as IDisposable;
             var client = _cloudFactory(target);
             var result = await client.PushRecordsAsync(category, cloudRecords);
 
@@ -189,5 +201,122 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
             "users" or "loanees" => target.Users,
             _ => throw new ArgumentException($"Unknown sync category: {category}", nameof(category))
         };
+    }
+
+    /// <summary>
+    /// Builds an effective AD config by applying per-target overrides on top of the global config.
+    /// Supports multiple selected OUs or groups.
+    /// </summary>
+    private static AdConnectionConfig BuildEffectiveAdConfig(
+        AdConnectionConfig globalConfig,
+        SyncCategoryConfig categoryConfig,
+        DirectoryObjectType objectType)
+    {
+        var overrides = categoryConfig.AdSearchBaseOverrides
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .ToList();
+
+        var hasSearchOverride = overrides.Count > 0;
+        var hasFilterOverride = !string.IsNullOrWhiteSpace(categoryConfig.AdFilterOverride);
+        var isGroupMode = categoryConfig.AdSourceIsGroup && hasSearchOverride;
+
+        if (!hasSearchOverride && !hasFilterOverride)
+            return globalConfig;
+
+        // Group mode: build a memberOf filter from all selected groups
+        if (isGroupMode)
+        {
+            // Extract domain root from first group DN
+            var dcIndex = overrides[0].IndexOf("DC=", StringComparison.OrdinalIgnoreCase);
+            var domainDn = dcIndex >= 0 ? overrides[0][dcIndex..] : globalConfig.UserSearchBase;
+
+            string memberOfFilter;
+            if (overrides.Count == 1)
+            {
+                memberOfFilter = $"(&(objectClass=user)(objectCategory=person)(memberOf={overrides[0]}))";
+            }
+            else
+            {
+                var clauses = string.Join("", overrides.Select(dn => $"(memberOf={dn})"));
+                memberOfFilter = $"(&(objectClass=user)(objectCategory=person)(|{clauses}))";
+            }
+
+            return new AdConnectionConfig
+            {
+                Domain = globalConfig.Domain,
+                Server = globalConfig.Server,
+                Port = globalConfig.Port,
+                UseSsl = globalConfig.UseSsl,
+                Username = globalConfig.Username,
+                EncryptedPassword = globalConfig.EncryptedPassword,
+                ComputerSearchBase = globalConfig.ComputerSearchBase,
+                UserSearchBase = domainDn,
+                AdditionalUserSearchBases = [],
+                ComputerFilter = globalConfig.ComputerFilter,
+                UserFilter = memberOfFilter
+            };
+        }
+
+        // OU mode: first selected is primary, rest are additional
+        var primary = overrides[0];
+        var additional = overrides.Skip(1).ToList();
+
+        if (objectType == DirectoryObjectType.Computer)
+        {
+            return new AdConnectionConfig
+            {
+                Domain = globalConfig.Domain,
+                Server = globalConfig.Server,
+                Port = globalConfig.Port,
+                UseSsl = globalConfig.UseSsl,
+                Username = globalConfig.Username,
+                EncryptedPassword = globalConfig.EncryptedPassword,
+                ComputerSearchBase = primary,
+                UserSearchBase = globalConfig.UserSearchBase,
+                AdditionalUserSearchBases = globalConfig.AdditionalUserSearchBases,
+                ComputerFilter = hasFilterOverride
+                    ? categoryConfig.AdFilterOverride.Trim()
+                    : globalConfig.ComputerFilter,
+                UserFilter = globalConfig.UserFilter
+            };
+        }
+
+        // User OU mode
+        return new AdConnectionConfig
+        {
+            Domain = globalConfig.Domain,
+            Server = globalConfig.Server,
+            Port = globalConfig.Port,
+            UseSsl = globalConfig.UseSsl,
+            Username = globalConfig.Username,
+            EncryptedPassword = globalConfig.EncryptedPassword,
+            ComputerSearchBase = globalConfig.ComputerSearchBase,
+            UserSearchBase = primary,
+            AdditionalUserSearchBases = additional,
+            ComputerFilter = globalConfig.ComputerFilter,
+            UserFilter = hasFilterOverride
+                ? categoryConfig.AdFilterOverride.Trim()
+                : globalConfig.UserFilter
+        };
+    }
+
+    /// <summary>
+    /// Public accessor for GetRequiredAdAttributes, used by the app for test sync preview.
+    /// </summary>
+    public static List<string> GetRequiredAdAttributesPublic(SyncCategoryConfig categoryConfig)
+    {
+        return GetRequiredAdAttributes(categoryConfig);
+    }
+
+    /// <summary>
+    /// Public accessor for BuildEffectiveAdConfig, used by the app for test sync preview.
+    /// </summary>
+    public static AdConnectionConfig BuildEffectiveAdConfigPublic(
+        AdConnectionConfig globalConfig,
+        SyncCategoryConfig categoryConfig,
+        DirectoryObjectType objectType)
+    {
+        return BuildEffectiveAdConfig(globalConfig, categoryConfig, objectType);
     }
 }

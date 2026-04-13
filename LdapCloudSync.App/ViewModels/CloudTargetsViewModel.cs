@@ -22,6 +22,17 @@ public sealed class CloudTargetsViewModel : ViewModelBase
         LoadFromConfig();
     }
 
+    /// <summary>
+    /// Called by MainViewModel after OUs are discovered to rebuild all target checkbox lists.
+    /// </summary>
+    public void RebuildAllOUSelections(
+        IEnumerable<string> computerOUs,
+        IEnumerable<string> userOUs)
+    {
+        foreach (var target in Targets)
+            target.RebuildOUSelections(computerOUs, userOUs);
+    }
+
     public ObservableCollection<CloudTargetViewModel> Targets { get; } = [];
     public IReadOnlyList<string> PresetNames { get; }
 

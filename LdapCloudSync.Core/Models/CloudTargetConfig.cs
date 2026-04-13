@@ -1,20 +1,24 @@
 namespace LdapCloudSync.Core.Models;
 
 /// <summary>
-/// Configuration for a single cloud sync target.
+/// Configuration for a single cloud target (e.g., Reftab, Snipe-IT).
 /// </summary>
 public sealed class CloudTargetConfig
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Target";
     public bool Enabled { get; set; } = true;
-
+    
     /// <summary>
-    /// The original preset this config was created from. 
-    /// "Reftab", "SnipeIt", or "Generic".
-    /// If the user modifies core structural fields of a preset, this switches to "Custom".
+    /// The preset template that was used to create this config (for reference only).
     /// </summary>
-    public string PresetOrigin { get; set; } = "Generic";
+    public string PresetOrigin { get; set; } = "Blank (REST)";
+    
+    /// <summary>
+    /// The provider type determines which client implementation to use.
+    /// This persists even if the user modifies fields after applying a preset.
+    /// </summary>
+    public string ProviderType { get; set; } = "Generic (Standard REST)";
 
     public CloudConnectionConfig Connection { get; set; } = new();
     public SyncCategoryConfig Assets { get; set; } = new();
@@ -128,4 +132,30 @@ public sealed class SyncCategoryConfig
     /// E.g., 1 = Laptop, 2 = Desktop. Leave 0 to omit from payload.
     /// </summary>
     public int TargetCategoryId { get; set; } = 0;
+
+    /// <summary>
+    /// For Reftab: the location ID (clid) to assign to new assets.
+    /// Leave 0 to omit from payload.
+    /// </summary>
+    public int TargetLocationId { get; set; } = 0;
+
+    /// <summary>
+    /// Per-target AD search base overrides. If set, only these OUs (or groups) are queried
+    /// for this category instead of the global AD search base.
+    /// Leave empty to use the global AD settings.
+    /// </summary>
+    public List<string> AdSearchBaseOverrides { get; set; } = [];
+
+    /// <summary>
+    /// Per-target LDAP filter override. If set, this filter is used instead
+    /// of the global filter for this category.
+    /// Leave empty to use the global AD filter.
+    /// </summary>
+    public string AdFilterOverride { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When true, treat AdSearchBaseOverrides as group DNs and generate
+    /// a memberOf filter instead of using them as search bases.
+    /// </summary>
+    public bool AdSourceIsGroup { get; set; } = false;
 }

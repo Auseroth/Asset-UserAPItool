@@ -19,6 +19,7 @@ public static class PresetRegistry
     public static CloudPreset Reftab { get; } = new()
     {
         Name = "Reftab",
+        ProviderType = "Reftab",
         BaseUrl = "https://www.reftab.com/api",
         AuthType = AuthType.Hmac,
         HmacAlgorithm = "HMACSHA256",
@@ -34,6 +35,7 @@ public static class PresetRegistry
             CloudMatchField = "title",
             DefaultMappings =
             [
+                // Top-level Reftab asset fields
                 new FieldMapping
                 {
                     CloudField = "title",
@@ -43,36 +45,8 @@ public static class PresetRegistry
                 },
                 new FieldMapping
                 {
-                    CloudField = "asset_tag",
+                    CloudField = "aid",
                     AdAttributes = ["cn"],
-                    TransformExpression = null,
-                    DefaultValue = null
-                },
-                new FieldMapping
-                {
-                    CloudField = "sn",
-                    AdAttributes = ["serialNumber"],
-                    TransformExpression = null,
-                    DefaultValue = null
-                },
-                new FieldMapping
-                {
-                    CloudField = "os",
-                    AdAttributes = ["operatingSystem"],
-                    TransformExpression = null,
-                    DefaultValue = null
-                },
-                new FieldMapping
-                {
-                    CloudField = "os_ver",
-                    AdAttributes = ["operatingSystemVersion"],
-                    TransformExpression = null,
-                    DefaultValue = null
-                },
-                new FieldMapping
-                {
-                    CloudField = "location",
-                    AdAttributes = ["location"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
@@ -80,6 +54,28 @@ public static class PresetRegistry
                 {
                     CloudField = "notes",
                     AdAttributes = ["description"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                // Custom category fields (nested into "details" at push time)
+                new FieldMapping
+                {
+                    CloudField = "details.Serial Number",
+                    AdAttributes = ["serialNumber"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "details.Operating System",
+                    AdAttributes = ["operatingSystem"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "details.OS Version",
+                    AdAttributes = ["operatingSystemVersion"],
                     TransformExpression = null,
                     DefaultValue = null
                 }
@@ -91,29 +87,16 @@ public static class PresetRegistry
             PostEndpoint = "/loanees",
             PutEndpoint = "/loanees/{id}",
             ResponseItemsPath = "$",
-            CloudIdField = "id",
-            AdMatchField = "sAMAccountName",
-            CloudMatchField = "username",
+            CloudIdField = "lnid",
+            AdMatchField = "mail",
+            CloudMatchField = "email",
             DefaultMappings =
             [
+                // Required Reftab loanee fields in order
                 new FieldMapping
                 {
-                    CloudField = "fn",
-                    AdAttributes = ["givenName"],
-                    TransformExpression = null,
-                    DefaultValue = null
-                },
-                new FieldMapping
-                {
-                    CloudField = "ln",
-                    AdAttributes = ["sn"],
-                    TransformExpression = null,
-                    DefaultValue = null
-                },
-                new FieldMapping
-                {
-                    CloudField = "username",
-                    AdAttributes = ["sAMAccountName"],
+                    CloudField = "name",
+                    AdAttributes = ["displayName"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
@@ -126,13 +109,6 @@ public static class PresetRegistry
                 },
                 new FieldMapping
                 {
-                    CloudField = "department",
-                    AdAttributes = ["department"],
-                    TransformExpression = null,
-                    DefaultValue = null
-                },
-                new FieldMapping
-                {
                     CloudField = "title",
                     AdAttributes = ["title"],
                     TransformExpression = null,
@@ -140,18 +116,14 @@ public static class PresetRegistry
                 },
                 new FieldMapping
                 {
-                    CloudField = "phone",
-                    AdAttributes = ["telephoneNumber"],
+                    CloudField = "employeeId",
+                    AdAttributes = ["employeeID"],
                     TransformExpression = null,
                     DefaultValue = null
-                },
-                new FieldMapping
-                {
-                    CloudField = "location",
-                    AdAttributes = ["l", "st"],
-                    TransformExpression = "{l}, {st}",
-                    DefaultValue = null
                 }
+                // "disabled" is auto-injected as false by ReftabClient.PreparePushRecord
+                // "details" is auto-injected as {} by ReftabClient.PreparePushRecord
+                // Additional custom fields can be mapped as "details.FieldName"
             ]
         }
     };
@@ -159,7 +131,8 @@ public static class PresetRegistry
     public static CloudPreset SnipeIt { get; } = new()
     {
         Name = "Snipe-IT",
-        BaseUrl = "https://your-instance.snipeitapp.com/api/v1",
+        ProviderType = "SnipeIT",
+        BaseUrl = "https://yourdomain.snipeitapp.com/api/v1",
         AuthType = AuthType.BearerToken,
         ApiKeyHeader = "Authorization",
         ApiKeyFormat = "Bearer {key}",

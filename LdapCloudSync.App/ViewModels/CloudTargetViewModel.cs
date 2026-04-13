@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Windows.Input;
 using LdapCloudSync.Core.Interfaces;
 using LdapCloudSync.Core.Models;
@@ -13,6 +14,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
     private readonly ConfigService _configService;
     internal CloudTargetConfig Config { get; }
 
+    // Saved selections loaded from config, applied when OUs are discovered
+    internal List<string> _savedAssetsOUs = [];
+    internal List<string> _savedUsersOUs = [];
+
     public CloudTargetViewModel(CloudTargetConfig config, ConfigService configService)
     {
         Config = config;
@@ -25,11 +30,25 @@ public sealed class CloudTargetViewModel : ViewModelBase
         DiscoverAdComputerFieldsCommand = new AsyncRelayCommand(DiscoverAdComputerFieldsAsync);
         DiscoverAdUserFieldsCommand = new AsyncRelayCommand(DiscoverAdUserFieldsAsync);
         TestCloudConnectionCommand = new AsyncRelayCommand(TestCloudConnectionAsync);
-        AddAssetMappingCommand = new RelayCommand(() => AssetMappings.Add(new FieldMappingViewModel()));
-        AddUserMappingCommand = new RelayCommand(() => UserMappings.Add(new FieldMappingViewModel()));
+        AddAssetMappingCommand = new RelayCommand(() =>
+        {
+            var m = new FieldMappingViewModel { SampleRecord = _sampleComputerRecord };
+            AssetMappings.Add(m);
+        });
+        AddUserMappingCommand = new RelayCommand(() =>
+        {
+            var m = new FieldMappingViewModel { SampleRecord = _sampleUserRecord };
+            UserMappings.Add(m);
+        });
         RemoveAssetMappingCommand = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) AssetMappings.Remove(m); });
         RemoveUserMappingCommand = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) UserMappings.Remove(m); });
         RefreshCategoriesCommand = new AsyncRelayCommand(RefreshCategoriesAsync);
+        RefreshLocationsCommand = new AsyncRelayCommand(RefreshLocationsAsync);
+        SelectAllAssetsOUsCommand = new RelayCommand<bool>(SelectAllAssetsOUs);
+        SelectAllUsersOUsCommand = new RelayCommand<bool>(SelectAllUsersOUs);
+        PreviewAssetMappingsCommand = new AsyncRelayCommand(PreviewAssetMappingsAsync);
+        PreviewUserMappingsCommand = new AsyncRelayCommand(PreviewUserMappingsAsync);
+        RunLocalTestSyncCommand = new AsyncRelayCommand(RunLocalTestSyncAsync);
     }
 
     #region Identity & Preset
@@ -52,11 +71,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public string PresetOrigin
     {
         get => _presetOrigin;
-        set
-        {
-            if (SetProperty(ref _presetOrigin, value))
-                ApplyPreset(value);
-        }
+        set => SetProperty(ref _presetOrigin, value);
     }
 
     #endregion
@@ -67,14 +82,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public string BaseUrl
     {
         get => _baseUrl;
-        set { if (SetProperty(ref _baseUrl, value)) CheckPresetDrift(); }
+        set => SetProperty(ref _baseUrl, value);
     }
 
     private AuthType _authType = AuthType.ApiKey;
     public AuthType AuthType
     {
         get => _authType;
-        set { if (SetProperty(ref _authType, value)) CheckPresetDrift(); }
+        set => SetProperty(ref _authType, value);
     }
 
     private string _apiKey = string.Empty;
@@ -123,14 +138,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public string HmacAlgorithm
     {
         get => _hmacAlgorithm;
-        set { if (SetProperty(ref _hmacAlgorithm, value)) CheckPresetDrift(); }
+        set => SetProperty(ref _hmacAlgorithm, value);
     }
 
     private string _contentType = "application/json";
     public string ContentType
     {
         get => _contentType;
-        set { if (SetProperty(ref _contentType, value)) CheckPresetDrift(); }
+        set => SetProperty(ref _contentType, value);
     }
 
     private string _cloudConnectionStatus = string.Empty;
@@ -200,6 +215,28 @@ public sealed class CloudTargetViewModel : ViewModelBase
         set => SetProperty(ref _assetsCloudMatchField, value);
     }
 
+    private string _assetsAdSearchBaseOverride = string.Empty;
+    public string AssetsAdSearchBaseOverride
+    {
+        get => _assetsAdSearchBaseOverride;
+        set
+        {
+            if (SetProperty(ref _assetsAdSearchBaseOverride, value))
+                OnPropertyChanged(nameof(AssetsEffectiveFilter));
+        }
+    }
+
+    private string _assetsAdFilterOverride = string.Empty;
+    public string AssetsAdFilterOverride
+    {
+        get => _assetsAdFilterOverride;
+        set
+        {
+            if (SetProperty(ref _assetsAdFilterOverride, value))
+                OnPropertyChanged(nameof(AssetsEffectiveFilter));
+        }
+    }
+
     #endregion
 
     #region Users Config
@@ -258,6 +295,39 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         get => _usersCloudMatchField;
         set => SetProperty(ref _usersCloudMatchField, value);
+    }
+
+    private string _usersAdSearchBaseOverride = string.Empty;
+    public string UsersAdSearchBaseOverride
+    {
+        get => _usersAdSearchBaseOverride;
+        set
+        {
+            if (SetProperty(ref _usersAdSearchBaseOverride, value))
+                OnPropertyChanged(nameof(UsersEffectiveFilter));
+        }
+    }
+
+    private string _usersAdFilterOverride = string.Empty;
+    public string UsersAdFilterOverride
+    {
+        get => _usersAdFilterOverride;
+        set
+        {
+            if (SetProperty(ref _usersAdFilterOverride, value))
+                OnPropertyChanged(nameof(UsersEffectiveFilter));
+        }
+    }
+
+    private bool _usersAdSourceIsGroup;
+    public bool UsersAdSourceIsGroup
+    {
+        get => _usersAdSourceIsGroup;
+        set
+        {
+            if (SetProperty(ref _usersAdSourceIsGroup, value))
+                OnPropertyChanged(nameof(UsersEffectiveFilter));
+        }
     }
 
     #endregion
@@ -391,6 +461,12 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public ICommand RemoveAssetMappingCommand { get; }
     public ICommand RemoveUserMappingCommand { get; }
     public ICommand RefreshCategoriesCommand { get; }
+    public ICommand RefreshLocationsCommand { get; }
+    public ICommand SelectAllAssetsOUsCommand { get; }
+    public ICommand SelectAllUsersOUsCommand { get; }
+    public ICommand PreviewAssetMappingsCommand { get; }
+    public ICommand PreviewUserMappingsCommand { get; }
+    public ICommand RunLocalTestSyncCommand { get; }
 
     #endregion
 
@@ -506,26 +582,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
         _presetOrigin = preset.Name;
         OnPropertyChanged(nameof(PresetOrigin));
         Name = preset.Name;
-    }
-
-    private void CheckPresetDrift()
-    {
-        if (_presetOrigin is "Blank (REST)" or "Custom")
-            return;
-
-        var preset = PresetRegistry.GetByName(_presetOrigin);
-        if (preset is null) return;
-
-        bool drifted = BaseUrl != preset.BaseUrl
-            || AuthType != preset.AuthType
-            || HmacAlgorithm != preset.HmacAlgorithm
-            || ContentType != preset.ContentType;
-
-        if (drifted)
-        {
-            _presetOrigin = "Custom";
-            OnPropertyChanged(nameof(PresetOrigin));
-        }
+        
+        // Add this line to set the provider type when applying a preset
+        ProviderType = preset.ProviderType;
     }
 
     #endregion
@@ -558,6 +617,16 @@ public sealed class CloudTargetViewModel : ViewModelBase
         var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.Computer);
         DiscoveredAdComputerAttributes.Clear();
         foreach (var a in attrs) DiscoveredAdComputerAttributes.Add(a);
+
+        // Fetch one sample record for live mapping preview
+        try
+        {
+            var sampleRecords = await provider.QueryAsync(DirectoryObjectType.Computer, attrs.ToList(), maxResults: 1);
+            if (sampleRecords.Count > 0)
+                SetAssetSampleRecord(sampleRecords[0]);
+        }
+        catch { /* Preview just won't have live data */ }
+
         CloudConnectionStatus = $"Discovered {attrs.Count} AD computer attributes.";
     }
 
@@ -569,6 +638,16 @@ public sealed class CloudTargetViewModel : ViewModelBase
         var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.User);
         DiscoveredAdUserAttributes.Clear();
         foreach (var a in attrs) DiscoveredAdUserAttributes.Add(a);
+
+        // Fetch one sample record for live mapping preview
+        try
+        {
+            var sampleRecords = await provider.QueryAsync(DirectoryObjectType.User, attrs.ToList(), maxResults: 1);
+            if (sampleRecords.Count > 0)
+                SetUserSampleRecord(sampleRecords[0]);
+        }
+        catch { /* Preview just won't have live data */ }
+
         CloudConnectionStatus = $"Discovered {attrs.Count} AD user attributes.";
     }
 
@@ -577,7 +656,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
         try
         {
             var targetConfig = BuildTargetConfig();
-            using var client = new GenericCloudClient(targetConfig);
+            using var client = CloudClientFactory.CreateClient(targetConfig);
             var (fields, _) = await client.DiscoverFieldsAsync(category);
             return fields;
         }
@@ -594,7 +673,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
         try
         {
             var targetConfig = BuildTargetConfig();
-            using var client = new GenericCloudClient(targetConfig);
+            using var client = CloudClientFactory.CreateClient(targetConfig);
             var (success, message) = await client.TestConnectionAsync();
             CloudConnectionStatus = message;
         }
@@ -612,10 +691,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         Name = Config.Name;
         Enabled = Config.Enabled;
-
-        // Map legacy "Generic" to new name, bypass setter to avoid ApplyPreset
-        _presetOrigin = Config.PresetOrigin is "Generic" ? "Blank (REST)" : Config.PresetOrigin;
-        OnPropertyChanged(nameof(PresetOrigin));
+        PresetOrigin = Config.PresetOrigin;
 
         // Connection
         BaseUrl = Config.Connection.BaseUrl;
@@ -638,6 +714,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
         AssetsCloudIdField = Config.Assets.CloudIdField;
         AssetsAdMatchField = Config.Assets.AdMatchField;
         AssetsCloudMatchField = Config.Assets.CloudMatchField;
+        // AssetsAdSearchBaseOverride = Config.Assets.AdSearchBaseOverride;
+        // UsersAdSearchBaseOverride = Config.Users.AdSearchBaseOverride;
+        _savedAssetsOUs = Config.Assets.AdSearchBaseOverrides;
+        AssetsAdFilterOverride = Config.Assets.AdFilterOverride;
 
         AssetMappings.Clear();
         foreach (var m in Config.Assets.FieldMappings)
@@ -652,6 +732,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
         UsersCloudIdField = Config.Users.CloudIdField;
         UsersAdMatchField = Config.Users.AdMatchField;
         UsersCloudMatchField = Config.Users.CloudMatchField;
+        _savedUsersOUs = Config.Users.AdSearchBaseOverrides;
+        UsersAdFilterOverride = Config.Users.AdFilterOverride;
+        UsersAdSourceIsGroup = Config.Users.AdSourceIsGroup;
 
         UserMappings.Clear();
         foreach (var m in Config.Users.FieldMappings)
@@ -668,12 +751,28 @@ public sealed class CloudTargetViewModel : ViewModelBase
         UsersCronExpression = Config.Schedule.UsersSchedule.CronExpression;
         UsersDailyAtTime = Config.Schedule.UsersSchedule.DailyAtTime;
 
-        // Assets category
+        // Assets category + location
         AssetsTargetCategoryId = Config.Assets.TargetCategoryId;
-        if (ShowCategorySelector && AssetCategories.Count == 0)
+        SelectedLocationId = Config.Assets.TargetLocationId;
+
+        // Provider type — must load BEFORE auto-refresh which calls ApplyToConfig
+        ProviderType = Config.ProviderType;
+
+        // Auto-load Reftab-specific data (sequential to avoid race on BuildTargetConfig)
+        if (ShowCategorySelector)
         {
-            _ = RefreshCategoriesAsync(); // Load categories in background
+            _ = LoadReftabDataAsync();
         }
+    }
+
+    /// <summary>
+    /// Loads Reftab categories and locations sequentially to avoid
+    /// concurrent BuildTargetConfig/ApplyToConfig race conditions.
+    /// </summary>
+    private async Task LoadReftabDataAsync()
+    {
+        await RefreshCategoriesAsync();
+        await RefreshLocationsAsync();
     }
 
     public void ApplyToConfig()
@@ -703,6 +802,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Assets.CloudMatchField = AssetsCloudMatchField;
         Config.Assets.FieldMappings = AssetMappings.Select(m => m.ToModel()).ToList();
         Config.Assets.TargetCategoryId = AssetsTargetCategoryId;
+        Config.Assets.TargetLocationId = SelectedLocationId;
+        Config.Assets.AdSearchBaseOverrides = GetSelectedAssetsOUs();
+        Config.Assets.AdFilterOverride = AssetsAdFilterOverride;
 
         Config.Users.Enabled = UsersEnabled;
         Config.Users.GetEndpoint = UsersGetEndpoint;
@@ -713,6 +815,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Users.AdMatchField = UsersAdMatchField;
         Config.Users.CloudMatchField = UsersCloudMatchField;
         Config.Users.FieldMappings = UserMappings.Select(m => m.ToModel()).ToList();
+        Config.Users.AdSearchBaseOverrides = GetSelectedUsersOUs();
+        Config.Users.AdFilterOverride = UsersAdFilterOverride;
 
         Config.Schedule.CoupledSchedule = CoupledSchedule;
         Config.Schedule.PrimarySchedule.Type = PrimaryScheduleType;
@@ -723,6 +827,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Schedule.UsersSchedule.Interval = TimeSpan.FromHours(UsersIntervalHours);
         Config.Schedule.UsersSchedule.CronExpression = UsersCronExpression;
         Config.Schedule.UsersSchedule.DailyAtTime = UsersDailyAtTime;
+
+        // Save provider type
+        Config.ProviderType = ProviderType;
     }
 
     private CloudTargetConfig BuildTargetConfig()
@@ -738,8 +845,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     // Add after existing properties
 
-    public bool ShowCategorySelector => BaseUrl.Contains("reftab", StringComparison.OrdinalIgnoreCase);
-
+    public bool ShowCategorySelector => ProviderType == "Reftab";
+    public bool ShowLocationSelector => ProviderType == "Reftab";
+    public string CategorySelector { get; set; }
     public ObservableCollection<CategoryItem> AssetCategories { get; } = [];
 
     private int _assetsTargetCategoryId;
@@ -749,22 +857,47 @@ public sealed class CloudTargetViewModel : ViewModelBase
         set => SetProperty(ref _assetsTargetCategoryId, value);
     }
 
+    private string _providerType = "Generic (Standard REST)";
+    public string ProviderType
+    {
+        get => _providerType;
+        set
+        {
+            if (SetProperty(ref _providerType, value))
+            {
+                OnPropertyChanged(nameof(ShowCategorySelector));
+                OnPropertyChanged(nameof(ShowLocationSelector));
+            }
+        }
+    }
+
     private async Task RefreshCategoriesAsync()
     {
         try
         {
-            var targetConfig = BuildTargetConfig();
-            using var client = new GenericCloudClient(targetConfig);
-            var categories = await client.GetAssetCategoriesAsync();
-
-            AssetCategories.Clear();
-            AssetCategories.Add(new CategoryItem { Id = 0, Name = "(None - use Reftab default)" });
-            foreach (var (id, name) in categories)
+            if (ProviderType != "Reftab")
             {
-                AssetCategories.Add(new CategoryItem { Id = id, Name = name });
+                CloudConnectionStatus = "Category discovery not supported for this provider.";
+                return;
             }
 
-            CloudConnectionStatus = $"Loaded {categories.Count} categories.";
+            CloudConnectionStatus = "Fetching categories...";
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is ReftabClient reftabClient)
+            {
+                var categories = await reftabClient.GetCategoriesAsync();
+
+                AssetCategories.Clear();
+                AssetCategories.Add(new CategoryItem { Id = 0, Name = "(None - use Reftab default)" });
+                foreach (var (cid, name) in categories)
+                {
+                    AssetCategories.Add(new CategoryItem { Id = cid, Name = name });
+                }
+
+                CloudConnectionStatus = $"Loaded {categories.Count} categories.";
+            }
         }
         catch (Exception ex)
         {
@@ -776,6 +909,457 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
+    }
+
+    public ObservableCollection<LocationItem> Locations { get; } = new();
+
+    private async Task RefreshLocationsAsync()
+    {
+        try
+        {
+            if (ProviderType != "Reftab")
+            {
+                CloudConnectionStatus = "Location discovery not supported for this provider.";
+                return;
+            }
+
+            CloudConnectionStatus = "Fetching locations...";
+
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is ReftabClient reftabClient)
+            {
+                var locations = await reftabClient.GetLocationsAsync();
+
+                Locations.Clear();
+                Locations.Add(new LocationItem { Id = 0, Name = "(None)" });
+                foreach (var (id, name) in locations)
+                {
+                    Locations.Add(new LocationItem { Id = id, Name = name });
+                }
+
+                CloudConnectionStatus = $"Loaded {locations.Count} locations.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Location fetch failed: {ex.Message}";
+        }
+    }
+
+    public class LocationItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private int _selectedLocationId;
+    public int SelectedLocationId
+    {
+        get => _selectedLocationId;
+        set => SetProperty(ref _selectedLocationId, value);
+    }
+    /// <summary>
+    /// Shows the effective LDAP filter that will be used for assets at sync time.
+    /// </summary>
+    public string AssetsEffectiveFilter
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(AssetsAdFilterOverride))
+                return $"Filter: {AssetsAdFilterOverride}";
+            var selected = GetSelectedAssetsOUs();
+            var globalFilter = _configService.Current.ActiveDirectory.ComputerFilter;
+            return selected.Count == 0
+                ? $"Filter (global): {globalFilter}"
+                : $"Filter (global): {globalFilter}  |  OUs: {selected.Count} selected";
+        }
+    }
+
+    /// <summary>
+    /// Shows the effective LDAP filter that will be used for users at sync time.
+    /// </summary>
+    public string UsersEffectiveFilter
+    {
+        get
+        {
+            var selected = GetSelectedUsersOUs();
+            if (UsersAdSourceIsGroup && selected.Count > 0)
+            {
+                var groups = string.Join(", ", selected.Select(s =>
+                {
+                    var cnEnd = s.IndexOf(',');
+                    return cnEnd > 0 ? s[..cnEnd] : s;
+                }));
+                return $"memberOf: {groups}";
+            }
+            if (!string.IsNullOrWhiteSpace(UsersAdFilterOverride))
+                return $"Filter: {UsersAdFilterOverride}";
+            var globalFilter = _configService.Current.ActiveDirectory.UserFilter;
+            return selected.Count == 0
+                ? $"Filter (global): {globalFilter}"
+                : $"Filter (global): {globalFilter}  |  OUs: {selected.Count} selected";
+        }
+    }
+
+    /// <summary>Checkbox items for multi-select computer OU picker.</summary>
+    public ObservableCollection<SelectableItemViewModel> AssetsOUSelections { get; } = [];
+
+    /// <summary>Gets the list of currently selected asset OU DNs.</summary>
+    public List<string> GetSelectedAssetsOUs()
+        => AssetsOUSelections.Where(x => x.IsSelected).Select(x => x.Value).ToList();
+
+    private void OnAssetsSelectionChanged()
+    {
+        OnPropertyChanged(nameof(AssetsEffectiveFilter));
+    }
+
+    /// <summary>Checkbox items for multi-select user OU/Group picker.</summary>
+    public ObservableCollection<SelectableItemViewModel> UsersOUSelections { get; } = [];
+
+    /// <summary>Gets the list of currently selected user OU/Group DNs.</summary>
+    public List<string> GetSelectedUsersOUs()
+        => UsersOUSelections.Where(x => x.IsSelected).Select(x => x.Value).ToList();
+
+    private void OnUsersSelectionChanged()
+    {
+        OnPropertyChanged(nameof(UsersEffectiveFilter));
+    }
+
+    private void SelectAllAssetsOUs(bool select)
+    {
+        foreach (var item in AssetsOUSelections)
+            item.IsSelected = select;
+    }
+
+    private void SelectAllUsersOUs(bool select)
+    {
+        foreach (var item in UsersOUSelections)
+            item.IsSelected = select;
+    }
+
+    /// <summary>
+    /// Rebuilds the checkbox items from the discovered OUs, preserving existing selections.
+    /// Called when the AdSettingsVm.DiscoveredComputerOUs/DiscoveredUserOUs collections change.
+    /// </summary>
+    public void RebuildOUSelections(
+        IEnumerable<string> computerOUs,
+        IEnumerable<string> userOUs)
+    {
+        // Use saved config selections on first load, then use current checkbox state
+        var previousAssets = AssetsOUSelections.Count > 0
+            ? GetSelectedAssetsOUs().ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : _savedAssetsOUs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        AssetsOUSelections.Clear();
+        foreach (var ou in computerOUs)
+        {
+            AssetsOUSelections.Add(new SelectableItemViewModel(
+                ou, previousAssets.Contains(ou), OnAssetsSelectionChanged));
+        }
+
+        var previousUsers = UsersOUSelections.Count > 0
+            ? GetSelectedUsersOUs().ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : _savedUsersOUs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        UsersOUSelections.Clear();
+        foreach (var ou in userOUs)
+        {
+            UsersOUSelections.Add(new SelectableItemViewModel(
+                ou, previousUsers.Contains(ou), OnUsersSelectionChanged));
+        }
+
+        OnPropertyChanged(nameof(AssetsEffectiveFilter));
+        OnPropertyChanged(nameof(UsersEffectiveFilter));
+    }
+
+    /// <summary>Sample AD computer record used for mapping previews.</summary>
+    private Dictionary<string, string>? _sampleComputerRecord;
+
+    /// <summary>Sample AD user record used for mapping previews.</summary>
+    private Dictionary<string, string>? _sampleUserRecord;
+
+    /// <summary>
+    /// Sets sample AD data on all asset mapping rows to enable live preview.
+    /// Call this after AD computer attribute discovery or preview queries.
+    /// </summary>
+    public void SetAssetSampleRecord(Dictionary<string, string> sample)
+    {
+        _sampleComputerRecord = sample;
+        foreach (var mapping in AssetMappings)
+            mapping.SampleRecord = sample;
+    }
+
+    /// <summary>
+    /// Sets sample AD data on all user mapping rows to enable live preview.
+    /// Call this after AD user attribute discovery or preview queries.
+    /// </summary>
+    public void SetUserSampleRecord(Dictionary<string, string> sample)
+    {
+        _sampleUserRecord = sample;
+        foreach (var mapping in UserMappings)
+            mapping.SampleRecord = sample;
+    }
+
+    private string _testSyncReport = string.Empty;
+    public string TestSyncReport
+    {
+        get => _testSyncReport;
+        set => SetProperty(ref _testSyncReport, value);
+    }
+
+    /// <summary>
+    /// Queries AD for the first computer record using only the mapped attributes,
+    /// then pushes that real data into the Preview column for all asset mappings.
+    /// </summary>
+    private async Task PreviewAssetMappingsAsync()
+    {
+        CloudConnectionStatus = "Fetching first AD computer record for preview...";
+        try
+        {
+            ApplyToConfig();
+            var globalAd = _configService.Current.ActiveDirectory;
+            var categoryConfig = Config.Assets;
+
+            // Collect only the attributes referenced by mappings
+            var requiredAttrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(categoryConfig.AdMatchField))
+                requiredAttrs.Add(categoryConfig.AdMatchField);
+            foreach (var mapping in categoryConfig.FieldMappings)
+            {
+                foreach (var attr in mapping.AdAttributes)
+                    requiredAttrs.Add(attr);
+                if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
+                    foreach (var attr in TransformEngine.ExtractAttributeNames(mapping.TransformExpression))
+                        requiredAttrs.Add(attr);
+            }
+
+            var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
+                globalAd, categoryConfig, DirectoryObjectType.Computer);
+
+            using var provider = new ActiveDirectoryProvider(effectiveAd);
+            var records = await provider.QueryAsync(
+                DirectoryObjectType.Computer, requiredAttrs.ToList(), maxResults: 1);
+
+            if (records.Count == 0)
+            {
+                CloudConnectionStatus = "No computer records found. Check AD source and filters.";
+                return;
+            }
+
+            SetAssetSampleRecord(records[0]);
+            CloudConnectionStatus = $"Preview loaded from: {records[0].GetValueOrDefault("cn", "(unknown)")}";
+
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Preview failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Queries AD for the first user record using only the mapped attributes,
+    /// then pushes that real data into the Preview column for all user mappings.
+    /// </summary>
+    private async Task PreviewUserMappingsAsync()
+    {
+        CloudConnectionStatus = "Fetching first AD user record for preview...";
+        try
+        {
+            ApplyToConfig();
+            var globalAd = _configService.Current.ActiveDirectory;
+            var categoryConfig = Config.Users;
+
+            var requiredAttrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(categoryConfig.AdMatchField))
+                requiredAttrs.Add(categoryConfig.AdMatchField);
+            foreach (var mapping in categoryConfig.FieldMappings)
+            {
+                foreach (var attr in mapping.AdAttributes)
+                    requiredAttrs.Add(attr);
+                if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
+                    foreach (var attr in TransformEngine.ExtractAttributeNames(mapping.TransformExpression))
+                        requiredAttrs.Add(attr);
+            }
+
+            var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
+                globalAd, categoryConfig, DirectoryObjectType.User);
+
+            using var provider = new ActiveDirectoryProvider(effectiveAd);
+            var records = await provider.QueryAsync(
+                DirectoryObjectType.User, requiredAttrs.ToList(), maxResults: 1);
+
+            if (records.Count == 0)
+            {
+                CloudConnectionStatus = "No user records found. Check AD source and filters.";
+                return;
+            }
+
+            SetUserSampleRecord(records[0]);
+            CloudConnectionStatus = $"Preview loaded from: {records[0].GetValueOrDefault("sAMAccountName", "(unknown)")}";
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Preview failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Runs the real sync pipeline in dry-run mode to capture the exact JSON payloads,
+    /// then shows a confirmation dialog. If the user clicks Proceed, runs the actual sync.
+    /// </summary>
+    private async Task RunLocalTestSyncAsync()
+    {
+        try
+        {
+            System.Windows.MessageBox.Show("Test Sync button clicked!", "Debug");
+            CloudConnectionStatus = "Building test sync preview...";
+
+            ApplyToConfig();
+            var config = _configService.Current;
+            var target = Config;
+
+            var captures = new List<DryRunCapture>();
+            var categories = new List<string>();
+
+            if (target.Assets.Enabled && target.Assets.FieldMappings.Count > 0)
+                categories.Add("assets");
+            if (target.Users.Enabled && target.Users.FieldMappings.Count > 0)
+                categories.Add("users");
+
+            if (categories.Count == 0)
+            {
+                System.Windows.MessageBox.Show("No categories enabled or no mappings configured.", "Debug");
+                CloudConnectionStatus = "No categories enabled or no mappings configured.";
+                return;
+            }
+
+            System.Windows.MessageBox.Show($"Processing {categories.Count} category(ies): {string.Join(", ", categories)}", "Debug");
+
+            foreach (var category in categories)
+            {
+                var categoryConfig = category == "assets" ? target.Assets : target.Users;
+                var objectType = category == "assets"
+                    ? DirectoryObjectType.Computer
+                    : DirectoryObjectType.User;
+
+                var requiredAttributes = SyncOrchestrator.GetRequiredAdAttributesPublic(categoryConfig);
+                var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
+                    config.ActiveDirectory, categoryConfig, objectType);
+
+                using var provider = new ActiveDirectoryProvider(effectiveAd);
+                var adRecords = await provider.QueryAsync(objectType, requiredAttributes, maxResults: 1);
+
+                System.Windows.MessageBox.Show($"AD returned {adRecords.Count} record(s) for {category}", "Debug");
+
+                if (adRecords.Count == 0)
+                {
+                    captures.Add(new DryRunCapture
+                    {
+                        Method = "INFO",
+                        Endpoint = $"/{category}",
+                        JsonBody = $"\"No AD records found for {category}. Check search base and filters.\""
+                    });
+                    continue;
+                }
+
+                var engine = new TransformEngine();
+                var cloudRecords = engine.TransformBatch(adRecords, categoryConfig.FieldMappings);
+
+                using var client = CloudClientFactory.CreateClient(target);
+                if (client is BaseCloudClient baseClient)
+                {
+                    baseClient.DryRunMode = true;
+                    await client.PushRecordsAsync(category, cloudRecords);
+                    captures.AddRange(baseClient.DryRunCaptures);
+                }
+
+                if (objectType == DirectoryObjectType.Computer)
+                    SetAssetSampleRecord(adRecords[0]);
+                else
+                    SetUserSampleRecord(adRecords[0]);
+            }
+
+            System.Windows.MessageBox.Show($"Captured {captures.Count} request(s). Opening preview window...", "Debug");
+
+            var previewVm = new TestSyncPreviewViewModel
+            {
+                Summary = $"Target: {target.Name}  |  {captures.Count} request(s) captured  |  {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+            };
+            foreach (var c in captures)
+                previewVm.Captures.Add(c);
+
+            var dialog = new Views.TestSyncPreviewWindow
+            {
+                DataContext = previewVm,
+                Owner = System.Windows.Application.Current.MainWindow
+            };
+            dialog.ShowDialog();
+
+            if (dialog.Confirmed)
+            {
+                CloudConnectionStatus = "Proceeding with sync...";
+                _ = ExecuteConfirmedSyncAsync(config, target, categories);
+            }
+            else
+            {
+                CloudConnectionStatus = "Test sync cancelled.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Test sync failed: {ex.Message}";
+            System.Windows.MessageBox.Show(
+                $"Test sync failed:\n\n{ex.Message}\n\n{ex.StackTrace}",
+                "Test Sync Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Executes the real sync after the user confirms in the preview dialog.
+    /// </summary>
+    private async Task ExecuteConfirmedSyncAsync(
+        SyncConfig config,
+        CloudTargetConfig target,
+        List<string> categories)
+    {
+        try
+        {
+            foreach (var category in categories)
+            {
+                var categoryConfig = category == "assets" ? target.Assets : target.Users;
+                var objectType = category == "assets"
+                    ? DirectoryObjectType.Computer
+                    : DirectoryObjectType.User;
+
+                var requiredAttributes = SyncOrchestrator.GetRequiredAdAttributesPublic(categoryConfig);
+                var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
+                    config.ActiveDirectory, categoryConfig, objectType);
+
+                using var provider = new ActiveDirectoryProvider(effectiveAd);
+                var adRecords = await provider.QueryAsync(objectType, requiredAttributes, maxResults: 1);
+
+                if (adRecords.Count == 0) continue;
+
+                var engine = new TransformEngine();
+                var cloudRecords = engine.TransformBatch(adRecords, categoryConfig.FieldMappings);
+
+                using var client = CloudClientFactory.CreateClient(target);
+                var result = await client.PushRecordsAsync(category, cloudRecords);
+
+                CloudConnectionStatus = $"{category}: Created {result.Created}, Updated {result.Updated}, Failed {result.Failed}";
+
+                if (result.Errors.Count > 0)
+                    CloudConnectionStatus += $" | Errors: {string.Join("; ", result.Errors)}";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Sync failed: {ex.Message}";
+        }
     }
 }
 

@@ -163,6 +163,35 @@ public sealed partial class TransformEngine
         return null;
     }
 
+    /// <summary>
+    /// Evaluates a mapping against sample AD data for UI preview purposes.
+    /// Returns the computed value or null if nothing could be produced.
+    /// </summary>
+    public static string? PreviewTransform(Dictionary<string, string> sampleRecord, FieldMapping mapping)
+    {
+        if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
+        {
+            var result = PlaceholderRegex().Replace(mapping.TransformExpression, match =>
+            {
+                var attrName = match.Groups[1].Value;
+                return sampleRecord.TryGetValue(attrName, out var value) && !string.IsNullOrEmpty(value)
+                    ? value
+                    : string.Empty;
+            });
+
+            return string.IsNullOrWhiteSpace(result) ? mapping.DefaultValue : result.Trim();
+        }
+
+        if (mapping.AdAttributes.Count > 0 &&
+            sampleRecord.TryGetValue(mapping.AdAttributes[0], out var val) &&
+            !string.IsNullOrEmpty(val))
+        {
+            return val;
+        }
+
+        return mapping.DefaultValue;
+    }
+
     [GeneratedRegex(@"\{(\w+)\}", RegexOptions.Compiled)]
     private static partial Regex PlaceholderRegex();
 }

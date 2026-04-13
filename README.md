@@ -1,4 +1,4 @@
-# Adding a New Cloud Provider to LdapCloudSync
+# LDAPult - Adding a New Cloud Provider
 
 This guide shows **every integration point** needed to add support for a new cloud asset management API (e.g., AssetPanda, Lansweeper, etc.).
 

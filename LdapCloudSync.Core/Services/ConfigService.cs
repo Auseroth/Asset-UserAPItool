@@ -13,7 +13,7 @@ namespace LdapCloudSync.Core.Services;
 public sealed class ConfigService
 {
     private static readonly string ConfigDirectory =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LdapCloudSync");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LDAPult");
 
     private static readonly string ConfigFilePath =
         Path.Combine(ConfigDirectory, "config.json");

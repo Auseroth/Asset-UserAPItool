@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.DirectoryServices;
 using System.Windows.Input;
 using LdapCloudSync.Core.Interfaces;
 using LdapCloudSync.Core.Models;
@@ -23,6 +24,7 @@ public sealed class AdSettingsViewModel : ViewModelBase
         UseAsComputerSearchBaseCommand = new RelayCommand(ApplyAsComputerSearchBase);
         UseAsUserSearchBaseCommand = new RelayCommand(ApplyAsUserSearchBase);
         UseAsUserFilterGroupCommand = new RelayCommand(ApplyConvertedAsGroupFilter);
+        RefreshOUsCommand = new AsyncRelayCommand(RefreshOUsAsync);
     }
 
     // Fields
@@ -170,6 +172,157 @@ public sealed class AdSettingsViewModel : ViewModelBase
     public ICommand UseAsComputerSearchBaseCommand { get; }
     public ICommand UseAsUserSearchBaseCommand { get; }
     public ICommand UseAsUserFilterGroupCommand { get; }
+    public ICommand RefreshOUsCommand { get; }
+
+    /// <summary>
+    /// Discovered child OUs under the computer search base — shared with Cloud Targets tab.
+    /// </summary>
+    public ObservableCollection<string> DiscoveredComputerOUs { get; } = [];
+
+    /// <summary>
+    /// Discovered child OUs under the user search base — shared with Cloud Targets tab.
+    /// </summary>
+    public ObservableCollection<string> DiscoveredUserOUs { get; } = [];
+
+    /// <summary>
+    /// Discovers child OUs under the configured computer and user search bases.
+    /// For users in group-filter mode (memberOf), extracts group DNs from the filter
+    /// instead of crawling the entire domain tree.
+    /// Called after a successful connection test or on-demand from the Cloud Targets tab.
+    /// </summary>
+    public async Task DiscoverOUsAsync()
+    {
+        var config = BuildAdConfig();
+
+        DiscoveredComputerOUs.Clear();
+        DiscoveredUserOUs.Clear();
+
+        // --- Computers: always discover child OUs ---
+        if (!string.IsNullOrWhiteSpace(config.ComputerSearchBase))
+        {
+            DiscoveredComputerOUs.Add(config.ComputerSearchBase);
+            var childOUs = await DiscoverChildOUsAsync(config, config.ComputerSearchBase);
+            foreach (var ou in childOUs)
+                DiscoveredComputerOUs.Add(ou);
+        }
+
+        // --- Users: check if we're in group-filter mode ---
+        var groupDns = ExtractMemberOfDns(config.UserFilter);
+
+        if (groupDns.Count > 0)
+        {
+            // Group mode: show each group DN as a selectable item
+            foreach (var groupDn in groupDns)
+                DiscoveredUserOUs.Add(groupDn);
+        }
+        else if (!string.IsNullOrWhiteSpace(config.UserSearchBase))
+        {
+            // OU mode: discover child OUs under the primary search base
+            DiscoveredUserOUs.Add(config.UserSearchBase);
+            var childOUs = await DiscoverChildOUsAsync(config, config.UserSearchBase);
+            foreach (var ou in childOUs)
+                DiscoveredUserOUs.Add(ou);
+        }
+
+        // Include additional user search bases
+        foreach (var additional in config.AdditionalUserSearchBases)
+        {
+            if (!string.IsNullOrWhiteSpace(additional) &&
+                !DiscoveredUserOUs.Contains(additional, StringComparer.OrdinalIgnoreCase))
+            {
+                DiscoveredUserOUs.Add(additional);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extracts group DNs from a memberOf-based LDAP filter.
+    /// Handles both single: (memberOf=CN=...) and multi: (|(memberOf=CN=...)(memberOf=CN=...))
+    /// Returns empty list if the filter is not group-based.
+    /// </summary>
+    private static List<string> ExtractMemberOfDns(string filter)
+    {
+        var results = new List<string>();
+        if (string.IsNullOrWhiteSpace(filter))
+            return results;
+
+        const string marker = "memberOf=";
+        var index = 0;
+
+        while (index < filter.Length)
+        {
+            var start = filter.IndexOf(marker, index, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+                break;
+
+            start += marker.Length;
+
+            // Find the closing parenthesis that ends this memberOf clause
+            var end = filter.IndexOf(')', start);
+            if (end < 0)
+                break;
+
+            var dn = filter[start..end].Trim();
+            if (!string.IsNullOrEmpty(dn))
+                results.Add(dn);
+
+            index = end + 1;
+        }
+
+        return results;
+    }
+
+    private static Task<List<string>> DiscoverChildOUsAsync(AdConnectionConfig config, string searchBase)
+    {
+        return Task.Run(() =>
+        {
+            var results = new List<string>();
+            try
+            {
+                var path = BuildLdapPath(config, searchBase);
+                var password = ConfigService.DecryptPassword(config.EncryptedPassword);
+
+                using var entry = new DirectoryEntry(path, config.Username, password,
+                    config.UseSsl ? AuthenticationTypes.SecureSocketsLayer : AuthenticationTypes.Secure);
+
+                using var searcher = new DirectorySearcher(entry)
+                {
+                    Filter = "(objectClass=organizationalUnit)",
+                    SearchScope = SearchScope.Subtree,
+                    PageSize = 1000
+                };
+                searcher.PropertiesToLoad.Add("distinguishedName");
+
+                using var searchResults = searcher.FindAll();
+                foreach (SearchResult result in searchResults)
+                {
+                    var dn = result.Properties["distinguishedName"][0]?.ToString();
+                    if (!string.IsNullOrEmpty(dn) &&
+                        !string.Equals(dn, searchBase, StringComparison.OrdinalIgnoreCase))
+                    {
+                        results.Add(dn);
+                    }
+                }
+
+                results.Sort(StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // Silently fail — OUs just won't appear in dropdown
+            }
+            return results;
+        });
+    }
+
+    private static string BuildLdapPath(AdConnectionConfig config, string searchBase)
+    {
+        var protocol = config.UseSsl ? "LDAPS" : "LDAP";
+        var host = !string.IsNullOrEmpty(config.Server) ? config.Server : config.Domain;
+        return $"{protocol}://{host}:{config.Port}/{searchBase}";
+    }
+
+    /// <summary>Raised after OUs are discovered so MainViewModel can rebuild target selections.</summary>
+    public event Action? OUsDiscovered;
 
     private async Task TestConnectionAsync()
     {
@@ -182,6 +335,20 @@ public sealed class AdSettingsViewModel : ViewModelBase
 
         ConnectionStatus = message;
         IsConnectionSuccess = success;
+
+        if (success)
+        {
+            await DiscoverOUsAsync();
+            OUsDiscovered?.Invoke();
+            ConnectionStatus = $"{message} | Discovered {DiscoveredComputerOUs.Count} computer OUs, {DiscoveredUserOUs.Count} user OUs.";
+        }
+    }
+
+    private async Task RefreshOUsAsync()
+    {
+        ApplyToConfig();
+        await DiscoverOUsAsync();
+        OUsDiscovered?.Invoke();
     }
 
     private async Task PreviewComputersAsync()
@@ -195,14 +362,20 @@ public sealed class AdSettingsViewModel : ViewModelBase
             using var provider = new ActiveDirectoryProvider(config);
             var records = await provider.QueryAsync(
                 DirectoryObjectType.Computer,
-                ["cn", "distinguishedName", "operatingSystem"],
+                ["cn", "distinguishedName", "operatingSystem", "description"],
                 maxResults: 25);
 
             foreach (var record in records)
             {
                 var cn = record.GetValueOrDefault("cn", "???");
                 var os = record.GetValueOrDefault("operatingSystem", "");
-                var display = string.IsNullOrEmpty(os) ? cn : $"{cn} ({os})";
+                var desc = record.GetValueOrDefault("description", "");
+
+                var parts = new List<string>();
+                if (!string.IsNullOrEmpty(os)) parts.Add(os);
+                if (!string.IsNullOrEmpty(desc)) parts.Add($"Desc: {desc}");
+
+                var display = parts.Count > 0 ? $"{cn}  ({string.Join(" | ", parts)})" : cn;
                 ComputerPreviewItems.Add(display);
             }
 
@@ -233,11 +406,9 @@ public sealed class AdSettingsViewModel : ViewModelBase
                 var name = record.GetValueOrDefault("displayName", "");
                 var sam = record.GetValueOrDefault("sAMAccountName", "???");
                 var mail = record.GetValueOrDefault("mail", "");
-                var display = !string.IsNullOrEmpty(name)
-                    ? $"{name} ({sam})"
-                    : !string.IsNullOrEmpty(mail)
-                        ? $"{sam} - {mail}"
-                        : sam;
+
+                var label = !string.IsNullOrEmpty(name) ? $"{name} ({sam})" : sam;
+                var display = !string.IsNullOrEmpty(mail) ? $"{label}  —  {mail}" : label;
                 UserPreviewItems.Add(display);
             }
 
@@ -332,8 +503,6 @@ public sealed class AdSettingsViewModel : ViewModelBase
 
     /// <summary>
     /// Builds an LDAP filter for memberOf across one or more groups.
-    /// Single:   (&amp;(objectClass=user)(objectCategory=person)(memberOf=CN=...))
-    /// Multiple: (&amp;(objectClass=user)(objectCategory=person)(|(memberOf=CN=...)(memberOf=CN=...)))
     /// </summary>
     private static string BuildMemberOfFilter(IReadOnlyList<string> groupDns)
     {
@@ -342,7 +511,6 @@ public sealed class AdSettingsViewModel : ViewModelBase
             return $"(&(objectClass=user)(objectCategory=person)(memberOf={groupDns[0]}))";
         }
 
-        // Multiple groups: OR them together
         var memberOfClauses = string.Join("", groupDns.Select(dn => $"(memberOf={dn})"));
         return $"(&(objectClass=user)(objectCategory=person)(|{memberOfClauses}))";
     }
@@ -352,7 +520,6 @@ public sealed class AdSettingsViewModel : ViewModelBase
         var lines = GetCanonicalLines();
         if (lines.Length == 0) return;
 
-        // Use first line as OU search base
         ComputerSearchBase = ConvertSingleCanonicalToDn(lines[0], lastPartIsCn: false);
         OnPropertyChanged(nameof(ComputerSearchBase));
     }
@@ -362,7 +529,6 @@ public sealed class AdSettingsViewModel : ViewModelBase
         var lines = GetCanonicalLines();
         if (lines.Length == 0) return;
 
-        // Convert all lines as OU paths
         var ouDns = lines
             .Select(l => ConvertSingleCanonicalToDn(l, lastPartIsCn: false))
             .Where(dn => !string.IsNullOrEmpty(dn))
@@ -370,10 +536,8 @@ public sealed class AdSettingsViewModel : ViewModelBase
 
         if (ouDns.Count == 0) return;
 
-        // First one is the primary search base
         UserSearchBase = ouDns[0];
 
-        // Rest go into additional search bases (one per line)
         AdditionalUserSearchBases = ouDns.Count > 1
             ? string.Join(Environment.NewLine, ouDns.Skip(1))
             : string.Empty;
@@ -389,7 +553,6 @@ public sealed class AdSettingsViewModel : ViewModelBase
         var lines = GetCanonicalLines();
         if (lines.Length == 0) return;
 
-        // Convert all lines as group CNs
         var groupDns = lines
             .Select(l => ConvertSingleCanonicalToDn(l, lastPartIsCn: true))
             .Where(dn => !string.IsNullOrEmpty(dn))
@@ -397,7 +560,6 @@ public sealed class AdSettingsViewModel : ViewModelBase
 
         if (groupDns.Count == 0) return;
 
-        // Search base = domain root (members could be in any OU)
         UserSearchBase = GetDomainDn(groupDns[0]);
         AdditionalUserSearchBases = string.Empty;
         UserFilter = BuildMemberOfFilter(groupDns);

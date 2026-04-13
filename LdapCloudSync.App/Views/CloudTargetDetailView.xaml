@@ -24,7 +24,17 @@
                     <TextBlock Text="Preset Template" Style="{StaticResource FieldLabel}" />
                     <ComboBox ItemsSource="{Binding DataContext.PresetNames, RelativeSource={RelativeSource AncestorType=UserControl, AncestorLevel=2}}"
                               SelectedItem="{Binding PresetOrigin}"
-                              IsEditable="False" />
+                              IsEditable="False">
+                        <ComboBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding ApplyPresetCommand}" CommandParameter="{Binding PresetOrigin}" />
+                        </ComboBox.InputBindings>
+                    </ComboBox>
+                    <Button Content="Apply Template" 
+                            Command="{Binding ApplyPresetCommand}" 
+                            CommandParameter="{Binding PresetOrigin}"
+                            Style="{StaticResource SecondaryButton}" 
+                            Padding="8,2" FontSize="10" Margin="0,4,0,0"
+                            ToolTip="Fills in endpoints, mappings, and auth settings from the selected template" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="4" VerticalAlignment="Bottom" Margin="0,0,0,4">
@@ -72,6 +82,27 @@
                     </StackPanel>
                 </Grid>
 
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Provider Type" Style="{StaticResource FieldLabel}" />
+                        <ComboBox SelectedItem="{Binding ProviderType}"
+                                  ItemsSource="{Binding Source={x:Static models:ProviderTypeValues.All}}"
+                                  ToolTip="Determines which API client implementation to use" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Content Type" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding ContentType, UpdateSourceTrigger=PropertyChanged}" 
+                                 ToolTip="e.g., application/json" />
+                    </StackPanel>
+                </Grid>
+
                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                     <Button Content="Test Connection" Command="{Binding TestCloudConnectionCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="10,4" FontSize="11" />
@@ -88,28 +119,96 @@
         </StackPanel>
         <Border Style="{StaticResource CardPanel}" Visibility="{Binding AssetsEnabled, Converter={StaticResource BoolToVis}}">
             <StackPanel>
-                <!-- Category Selection (Reftab only) -->
-                <Grid Margin="0,0,0,8" Visibility="{Binding ShowCategorySelector, Converter={StaticResource BoolToVis}}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Target Category (Reftab)" Style="{StaticResource FieldLabel}" />
-                        <ComboBox ItemsSource="{Binding AssetCategories}"
-                                  SelectedValue="{Binding AssetsTargetCategoryId}"
-                                  DisplayMemberPath="Name"
-                                  SelectedValuePath="Id"
-                                  IsEditable="False" />
+                <!-- AD Source for Assets -->
+                <StackPanel Margin="0,0,0,4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="AD Source (Computer OUs)" Style="{StaticResource FieldLabel}" />
+                            <Border BorderBrush="#CCC" BorderThickness="1" CornerRadius="3" MaxHeight="120" Margin="0,2,0,0">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <CheckBox Content="Select All" FontWeight="SemiBold" FontSize="11" Margin="6,4,0,2"
+                                                  Command="{Binding SelectAllAssetsOUsCommand}"
+                                                  CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" />
+                                        <ItemsControl ItemsSource="{Binding AssetsOUSelections}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsSelected}" Content="{Binding Value}"
+                                                              FontFamily="Consolas" FontSize="11" Margin="6,1,6,1" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                        </StackPanel>
+
+                        <Button Grid.Column="2" Content="&#x21BB; Refresh OUs"
+                                Command="{Binding DataContext.AdSettingsVm.RefreshOUsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="8,4" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,4"
+                                ToolTip="Re-discover OUs from Active Directory (use after changing AD settings)" />
+                    </Grid>
+                    <TextBlock Text="{Binding AssetsEffectiveFilter}" FontFamily="Consolas" FontSize="10"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap"
+                               ToolTip="The LDAP filter that will be used at sync time" />
+                </StackPanel>
+
+                <!-- Reftab Asset Settings (Category + Location) - only visible for Reftab -->
+                <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,8" Margin="0,4,0,4"
+                        Visibility="{Binding ShowCategorySelector, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Reftab Asset Settings" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Target Category" Style="{StaticResource FieldLabel}" />
+                                <ComboBox ItemsSource="{Binding AssetCategories}"
+                                          DisplayMemberPath="Name"
+                                          SelectedValuePath="Id"
+                                          SelectedValue="{Binding AssetsTargetCategoryId, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <Button Grid.Column="2" Content="Refresh"
+                                    Command="{Binding RefreshCategoriesCommand}"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Padding="8,4" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Target Location" Style="{StaticResource FieldLabel}" />
+                                <ComboBox ItemsSource="{Binding Locations}"
+                                          DisplayMemberPath="Name"
+                                          SelectedValuePath="Id"
+                                          SelectedValue="{Binding SelectedLocationId, Mode=TwoWay}"
+                                          IsEditable="False" />
+                            </StackPanel>
+
+                            <Button Grid.Column="2" Content="Refresh"
+                                    Command="{Binding RefreshLocationsCommand}"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Padding="8,4" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+                        </Grid>
                     </StackPanel>
-                    
-                    <Button Grid.Column="2" Content="Refresh Categories" 
-                            Command="{Binding RefreshCategoriesCommand}"
-                            Style="{StaticResource SecondaryButton}" 
-                            Padding="8,4" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,4" />
-                </Grid>
+                </Border>
 
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -160,20 +259,23 @@
                 <!-- Asset Field Mapping -->
                 <TextBlock Text="Field Mappings" FontWeight="SemiBold" Margin="0,12,0,4" />
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="&#x25B6; Preview Mappings" Command="{Binding PreviewAssetMappingsCommand}"
+                            Style="{StaticResource PrimaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
+                            ToolTip="Queries AD for the first computer record and shows real values in the Preview column" />
                     <Button Content="Discover Cloud Fields" Command="{Binding DiscoverAssetFieldsCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
                     <Button Content="Discover AD Attributes" Command="{Binding DiscoverAdComputerFieldsCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
                     <Button Content="+ Add Mapping" Command="{Binding AddAssetMappingCommand}"
-                            Style="{StaticResource PrimaryButton}" Padding="8,3" FontSize="11" />
+                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" />
                 </StackPanel>
 
-                <!-- Mapping grid header -->
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="30" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="0.8*" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="30" />
                     </Grid.ColumnDefinitions>
@@ -181,6 +283,7 @@
                     <TextBlock Grid.Column="1" Text="->" HorizontalAlignment="Center" FontSize="11" />
                     <TextBlock Grid.Column="2" Text="Cloud Field" FontWeight="SemiBold" FontSize="11" />
                     <TextBlock Grid.Column="3" Text="Transform / Default" FontWeight="SemiBold" FontSize="11" />
+                    <TextBlock Grid.Column="4" Text="Preview" FontWeight="SemiBold" FontSize="11" Margin="4,0,0,0" />
                 </Grid>
 
                 <ItemsControl ItemsSource="{Binding AssetMappings}">
@@ -191,6 +294,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="30" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="0.8*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="30" />
                                 </Grid.ColumnDefinitions>
@@ -205,7 +309,11 @@
                                 <TextBox Grid.Column="3" Text="{Binding TransformExpression, UpdateSourceTrigger=PropertyChanged}"
                                          FontSize="11" Margin="4,0,0,0"
                                          ToolTip="Optional: {attr1} {attr2} for merge, or leave empty for 1:1 mapping" />
-                                <Button Grid.Column="4" Content="X" FontSize="9" Padding="4,2"
+                                <TextBlock Grid.Column="4" Text="{Binding Preview}" FontFamily="Consolas" FontSize="10"
+                                           Foreground="#4A90D9" VerticalAlignment="Center" Margin="4,0,0,0"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Preview}" />
+                                <Button Grid.Column="5" Content="X" FontSize="9" Padding="4,2"
                                         Command="{Binding DataContext.RemoveAssetMappingCommand, RelativeSource={RelativeSource AncestorType=Border}}"
                                         CommandParameter="{Binding}"
                                         Background="Transparent" BorderThickness="0" Cursor="Hand" Foreground="Gray" />
@@ -223,6 +331,53 @@
         </StackPanel>
         <Border Style="{StaticResource CardPanel}" Visibility="{Binding UsersEnabled, Converter={StaticResource BoolToVis}}">
             <StackPanel>
+                <!-- AD Source for Users -->
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="AD Source (User OUs or Groups)" Style="{StaticResource FieldLabel}" />
+                        <Border BorderBrush="#CCC" BorderThickness="1" CornerRadius="3" MaxHeight="120" Margin="0,2,0,0">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <CheckBox Content="Select All" FontWeight="SemiBold" FontSize="11" Margin="6,4,0,2"
+                                              Command="{Binding SelectAllUsersOUsCommand}"
+                                              CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" />
+                                    <ItemsControl ItemsSource="{Binding UsersOUSelections}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsSelected}" Content="{Binding Value}"
+                                                          FontFamily="Consolas" FontSize="11" Margin="6,1,6,1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                        <TextBlock Text="{Binding UsersEffectiveFilter}" FontFamily="Consolas" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                   ToolTip="The LDAP filter that will be used at sync time" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,8,0,0">
+                        <CheckBox Content="Group (memberOf)" IsChecked="{Binding UsersAdSourceIsGroup}"
+                                  ToolTip="Check to treat selections as group DNs and filter by memberOf instead of searching OUs directly."
+                                  FontSize="11" />
+                    </StackPanel>
+
+                    <Button Grid.Column="4" Content="&#x21BB; Refresh OUs"
+                            Command="{Binding DataContext.AdSettingsVm.RefreshOUsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            Style="{StaticResource SecondaryButton}"
+                            Padding="8,4" FontSize="11" VerticalAlignment="Center" Margin="0,8,0,0"
+                            ToolTip="Re-discover OUs from Active Directory (use after changing AD settings)" />
+                </Grid>
+
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -272,12 +427,15 @@
                 <!-- User Field Mapping -->
                 <TextBlock Text="Field Mappings" FontWeight="SemiBold" Margin="0,12,0,4" />
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="&#x25B6; Preview Mappings" Command="{Binding PreviewUserMappingsCommand}"
+                            Style="{StaticResource PrimaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
+                            ToolTip="Queries AD for the first user record and shows real values in the Preview column" />
                     <Button Content="Discover Cloud Fields" Command="{Binding DiscoverUserFieldsCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
                     <Button Content="Discover AD Attributes" Command="{Binding DiscoverAdUserFieldsCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
                     <Button Content="+ Add Mapping" Command="{Binding AddUserMappingCommand}"
-                            Style="{StaticResource PrimaryButton}" Padding="8,3" FontSize="11" />
+                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" />
                 </StackPanel>
 
                 <Grid Margin="0,0,0,2">
@@ -285,6 +443,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="30" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="0.8*" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="30" />
                     </Grid.ColumnDefinitions>
@@ -292,6 +451,7 @@
                     <TextBlock Grid.Column="1" Text="->" HorizontalAlignment="Center" FontSize="11" />
                     <TextBlock Grid.Column="2" Text="Cloud Field" FontWeight="SemiBold" FontSize="11" />
                     <TextBlock Grid.Column="3" Text="Transform / Default" FontWeight="SemiBold" FontSize="11" />
+                    <TextBlock Grid.Column="4" Text="Preview" FontWeight="SemiBold" FontSize="11" Margin="4,0,0,0" />
                 </Grid>
 
                 <ItemsControl ItemsSource="{Binding UserMappings}">
@@ -302,6 +462,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="30" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="0.8*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="30" />
                                 </Grid.ColumnDefinitions>
@@ -316,7 +477,11 @@
                                 <TextBox Grid.Column="3" Text="{Binding TransformExpression, UpdateSourceTrigger=PropertyChanged}"
                                          FontSize="11" Margin="4,0,0,0"
                                          ToolTip="Optional: {attr1} {attr2} for merge, or leave empty for 1:1 mapping" />
-                                <Button Grid.Column="4" Content="X" FontSize="9" Padding="4,2"
+                                <TextBlock Grid.Column="4" Text="{Binding Preview}" FontFamily="Consolas" FontSize="10"
+                                           Foreground="#4A90D9" VerticalAlignment="Center" Margin="4,0,0,0"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Preview}" />
+                                <Button Grid.Column="5" Content="X" FontSize="9" Padding="4,2"
                                         Command="{Binding DataContext.RemoveUserMappingCommand, RelativeSource={RelativeSource AncestorType=Border}}"
                                         CommandParameter="{Binding}"
                                         Background="Transparent" BorderThickness="0" Cursor="Hand" Foreground="Gray" />
@@ -327,6 +492,7 @@
             </StackPanel>
         </Border>
 
+
         <!-- Schedule Section -->
         <TextBlock Text="Schedule" Style="{StaticResource SectionHeader}" />
         <Border Style="{StaticResource CardPanel}">
@@ -334,7 +500,6 @@
                 <CheckBox Content="Coupled schedule (Assets and Users share the same schedule)"
                           IsChecked="{Binding CoupledSchedule}" Margin="0,0,0,8" />
 
-                <!-- Primary / Assets Schedule -->
                 <TextBlock FontWeight="SemiBold" FontSize="12" Margin="0,4,0,4">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
@@ -353,11 +518,9 @@
                                  Margin="0,0,16,0" />
                     <RadioButton Content="Daily at specific time" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
                                  Margin="0,0,16,0" />
-                    <RadioButton Content="Advanced (Cron)" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}"
-                                 ToolTip="Cron expressions allow precise scheduling like 'every weekday at 3am'. Format: minute hour day month weekday" />
+                    <RadioButton Content="Advanced (Cron)" IsChecked="{Binding PrimaryScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}" />
                 </StackPanel>
 
-                <!-- Interval input -->
                 <StackPanel Orientation="Horizontal"
                             Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Interval}">
                     <TextBlock Text="Run every" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -366,29 +529,25 @@
                     <TextBlock Text="hours" VerticalAlignment="Center" Margin="6,0,0,0" />
                 </StackPanel>
 
-                <!-- Daily At input -->
                 <StackPanel Orientation="Horizontal"
                             Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=DailyAt}">
                     <TextBlock Text="Run daily at" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <TextBox Text="{Binding PrimaryDailyAtTimeText, UpdateSourceTrigger=PropertyChanged}"
-                             Width="80" VerticalAlignment="Center"
-                             ToolTip="24-hour format, e.g. 02:00 or 14:30" />
+                             Width="80" VerticalAlignment="Center" />
                     <TextBlock Text="(24hr format)" VerticalAlignment="Center" Margin="6,0,0,0"
                                Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
                 </StackPanel>
 
-                <!-- Cron input -->
                 <StackPanel Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Cron expression" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <TextBox Text="{Binding PrimaryCronExpression, UpdateSourceTrigger=PropertyChanged}"
                                  Width="200" VerticalAlignment="Center" FontFamily="Consolas" />
                     </StackPanel>
-                    <TextBlock Text="Format: min hour day month weekday | Examples: '0 2 * * *' = daily 2am | '0 3 * * 1-5' = weekdays 3am | '0 */6 * * *' = every 6 hours"
+                    <TextBlock Text="Format: min hour day month weekday | Examples: '0 2 * * *' = daily 2am | '0 */6 * * *' = every 6 hours"
                                FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                 </StackPanel>
 
-                <!-- Users Schedule (only when decoupled) -->
                 <StackPanel Margin="0,16,0,0">
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
@@ -407,11 +566,9 @@
                                      Margin="0,0,16,0" />
                         <RadioButton Content="Daily at specific time" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
                                      Margin="0,0,16,0" />
-                        <RadioButton Content="Advanced (Cron)" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}"
-                                     ToolTip="Cron expressions allow precise scheduling like 'every weekday at 3am'. Format: minute hour day month weekday" />
+                        <RadioButton Content="Advanced (Cron)" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}" />
                     </StackPanel>
 
-                    <!-- Interval input -->
                     <StackPanel Orientation="Horizontal"
                                 Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Interval}">
                         <TextBlock Text="Run every" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -420,18 +577,15 @@
                         <TextBlock Text="hours" VerticalAlignment="Center" Margin="6,0,0,0" />
                     </StackPanel>
 
-                    <!-- Daily At input -->
                     <StackPanel Orientation="Horizontal"
                                 Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=DailyAt}">
                         <TextBlock Text="Run daily at" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <TextBox Text="{Binding UsersDailyAtTimeText, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="80" VerticalAlignment="Center"
-                                 ToolTip="24-hour format, e.g. 02:00 or 14:30" />
+                                 Width="80" VerticalAlignment="Center" />
                         <TextBlock Text="(24hr format)" VerticalAlignment="Center" Margin="6,0,0,0"
                                    Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
                     </StackPanel>
 
-                    <!-- Cron input -->
                     <StackPanel Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="Cron expression" VerticalAlignment="Center" Margin="0,0,6,0" />

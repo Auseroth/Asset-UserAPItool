@@ -1,6 +1,8 @@
-using System.Collections.ObjectModel;
 using System.Windows.Input;
+using LdapCloudSync.Core.Interfaces;
 using LdapCloudSync.Core.Ipc;
+using LdapCloudSync.Core.Models;
+using LdapCloudSync.Core.Providers;
 using LdapCloudSync.Core.Services;
 
 namespace LdapCloudSync.App.ViewModels;
@@ -23,8 +25,13 @@ public sealed class MainViewModel : ViewModelBase
         TriggerTestSyncCommand = new AsyncRelayCommand(TriggerTestSyncAsync, () => IsServiceRunning);
         ReloadServiceConfigCommand = new AsyncRelayCommand(ReloadServiceConfigAsync, () => IsServiceRunning);
 
+        AdSettingsVm.OUsDiscovered += RebuildTargetOUSelections;
+
         // Check service status on load with retries (service may still be starting)
         _ = CheckServiceStatusWithRetryAsync();
+
+        // Auto-discover OUs if AD is already configured (populates Cloud Target dropdowns)
+        _ = AutoDiscoverOUsAsync();
     }
 
     // Child ViewModels
@@ -87,6 +94,34 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         StatusMessage = "Service not detected. Start it manually or check the installation.";
+    }
+
+    /// <summary>
+    /// Attempts to discover OUs on startup if AD credentials are already saved.
+    /// Silently fails if AD is not configured or unreachable.
+    /// </summary>
+    private async Task AutoDiscoverOUsAsync()
+    {
+        try
+        {
+            var ad = _configService.Current.ActiveDirectory;
+            if (!string.IsNullOrWhiteSpace(ad.Domain) && !string.IsNullOrWhiteSpace(ad.EncryptedPassword))
+            {
+                await AdSettingsVm.DiscoverOUsAsync();
+                RebuildTargetOUSelections();
+            }
+        }
+        catch
+        {
+            // Silent - OUs just won't be pre-populated until Test Connection
+        }
+    }
+
+    private void RebuildTargetOUSelections()
+    {
+        CloudTargetsVm.RebuildAllOUSelections(
+            AdSettingsVm.DiscoveredComputerOUs,
+            AdSettingsVm.DiscoveredUserOUs);
     }
 
     private async Task SaveAsync()
@@ -155,21 +190,140 @@ public sealed class MainViewModel : ViewModelBase
     private async Task TriggerTestSyncAsync()
     {
         IsBusy = true;
-        StatusMessage = "Running test sync (10 records)...";
+        StatusMessage = "Building test sync preview...";
 
-        var response = await IpcClient.TriggerTestSyncAsync(maxRecords: 10);
-        StatusMessage = response.Success
-            ? $"Test sync complete. {response.Data}"
-            : $"Test sync failed: {response.Message}";
+        try
+        {
+            // Save current config state so dry-run uses latest values
+            AdSettingsVm.ApplyToConfig();
+            CloudTargetsVm.ApplyToConfig();
 
-        IsBusy = false;
+            var config = _configService.Current;
+            var captures = new List<DryRunCapture>();
+
+            // Dry-run each enabled target/category locally
+            foreach (var target in config.CloudTargets.Where(t => t.Enabled))
+            {
+                var categoriesToTest = new List<(string Name, SyncCategoryConfig Config, DirectoryObjectType ObjType)>();
+
+                if (target.Assets.Enabled && target.Assets.FieldMappings.Count > 0)
+                    categoriesToTest.Add(("assets", target.Assets, DirectoryObjectType.Computer));
+                if (target.Users.Enabled && target.Users.FieldMappings.Count > 0)
+                    categoriesToTest.Add(("users", target.Users, DirectoryObjectType.User));
+
+                foreach (var (category, categoryConfig, objectType) in categoriesToTest)
+                {
+                    try
+                    {
+                        var requiredAttributes = SyncOrchestrator.GetRequiredAdAttributesPublic(categoryConfig);
+                        var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
+                            config.ActiveDirectory, categoryConfig, objectType);
+
+                        using var provider = new ActiveDirectoryProvider(effectiveAd);
+                        var adRecords = await provider.QueryAsync(objectType, requiredAttributes, maxResults: 1);
+
+                        if (adRecords.Count == 0)
+                        {
+                            captures.Add(new DryRunCapture
+                            {
+                                Method = "INFO",
+                                Endpoint = $"[{target.Name}] /{category}",
+                                JsonBody = $"\"No AD records found for {category}. Check search base and filters.\""
+                            });
+                            continue;
+                        }
+
+                        var engine = new TransformEngine();
+                        var cloudRecords = engine.TransformBatch(adRecords, categoryConfig.FieldMappings);
+
+                        using var client = CloudClientFactory.CreateClient(target);
+                        if (client is BaseCloudClient baseClient)
+                        {
+                            baseClient.DryRunMode = true;
+                            await client.PushRecordsAsync(category, cloudRecords);
+
+                            // Tag each capture with the target name for clarity
+                            foreach (var capture in baseClient.DryRunCaptures)
+                                capture.Endpoint = $"[{target.Name}] {capture.Endpoint}";
+
+                            captures.AddRange(baseClient.DryRunCaptures);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        captures.Add(new DryRunCapture
+                        {
+                            Method = "ERROR",
+                            Endpoint = $"[{target.Name}] /{category}",
+                            JsonBody = $"\"{ex.Message}\""
+                        });
+                    }
+                }
+            }
+
+            if (captures.Count == 0)
+            {
+                StatusMessage = "No enabled targets with mappings found.";
+                return;
+            }
+
+            // Show preview dialog
+            var previewVm = new TestSyncPreviewViewModel
+            {
+                Summary = $"{captures.Count} request(s) across {config.CloudTargets.Count(t => t.Enabled)} target(s)  |  {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+            };
+            foreach (var c in captures)
+                previewVm.Captures.Add(c);
+
+            var dialog = new Views.TestSyncPreviewWindow
+            {
+                DataContext = previewVm,
+                Owner = System.Windows.Application.Current.MainWindow
+            };
+            dialog.ShowDialog();
+
+            if (dialog.Confirmed)
+            {
+                StatusMessage = "Sending test sync (10 records) to service...";
+                var response = await IpcClient.TriggerTestSyncAsync(maxRecords: 10);
+                StatusMessage = response.Success
+                    ? $"Test sync complete. {response.Data}"
+                    : $"Test sync failed: {response.Message}";
+            }
+            else
+            {
+                StatusMessage = "Test sync cancelled.";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Test sync preview failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task ReloadServiceConfigAsync()
     {
-        var response = await IpcClient.ReloadConfigAsync();
-        StatusMessage = response.Success
-            ? "Service configuration reloaded."
-            : $"Reload failed: {response.Message}";
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Reloading service configuration...";
+
+            var response = await IpcClient.ReloadConfigAsync();
+            StatusMessage = response.Success
+                ? "Service configuration reloaded."
+                : $"Reload failed: {response.Message}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Reload failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 }

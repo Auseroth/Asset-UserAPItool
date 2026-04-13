@@ -1,9 +1,15 @@
 namespace LdapCloudSync.Core.Models;
 
 /// <summary>
-/// Static helper to expose all AuthType values for XAML ComboBox binding.
+/// Helper class for binding AuthType enum values in XAML.
 /// </summary>
 public static class AuthTypeValues
 {
-    public static AuthType[] All { get; } = Enum.GetValues<AuthType>();
+    public static AuthType[] All { get; } = 
+    [
+        AuthType.BearerToken,
+        AuthType.ApiKey,
+        AuthType.BasicAuth,
+        AuthType.Hmac
+    ];
 }

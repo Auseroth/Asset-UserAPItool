@@ -174,7 +174,7 @@ public sealed class SyncWorker : BackgroundService
         var orchestrator = new SyncOrchestrator(
             _configService,
             adConfig => new ActiveDirectoryProvider(adConfig, activityLogger),
-            targetConfig => new GenericCloudClient(targetConfig, logger: activityLogger),
+            targetConfig => CloudClientFactory.CreateClient(targetConfig, activityLogger),
             activityLogger);
 
         if (maxRecords > 0)

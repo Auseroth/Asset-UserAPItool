@@ -8,9 +8,15 @@ using LdapCloudSync.Core.Models;
 /// </summary>
 public sealed class CloudPreset
 {
-    public required string Name { get; init; }
-    public required string BaseUrl { get; init; }
-    public required AuthType AuthType { get; init; }
+    public string Name { get; init; } = "Unnamed";
+
+    /// <summary>
+    /// The provider type to use (determines which client class).
+    /// </summary>
+    public string ProviderType { get; init; } = "Generic";
+
+    public string BaseUrl { get; init; } = string.Empty;
+    public AuthType AuthType { get; init; } = AuthType.BearerToken;
     public string ApiKeyHeader { get; init; } = "Authorization";
     public string ApiKeyFormat { get; init; } = "Bearer {key}";
     public string HmacAlgorithm { get; init; } = "HMACSHA256";

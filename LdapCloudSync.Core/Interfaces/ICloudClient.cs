@@ -1,28 +1,28 @@
+using LdapCloudSync.Core.Models;
+
 namespace LdapCloudSync.Core.Interfaces;
 
 /// <summary>
-/// Abstracts cloud REST API operations. Implemented generically --
-/// driven entirely by CloudTargetConfig, not provider-specific code.
+/// Abstraction for cloud service API clients.
+/// Implementations handle authentication, field discovery, and record synchronization.
 /// </summary>
-public interface ICloudClient
+public interface ICloudClient : IDisposable
 {
     /// <summary>
-    /// Tests connectivity to the configured cloud endpoint.
+    /// Tests connectivity and authentication to the cloud service.
     /// </summary>
     Task<(bool Success, string Message)> TestConnectionAsync();
 
     /// <summary>
-    /// Performs a GET request and extracts field names from the response.
-    /// Used for field discovery in the mapping UI.
+    /// Discovers available fields/properties from the cloud API response.
+    /// Useful for dynamic field mapping configuration.
     /// </summary>
-    /// <param name="category">"assets" or "users".</param>
     Task<(IReadOnlyList<string> Fields, string RawResponse)> DiscoverFieldsAsync(string category);
 
     /// <summary>
-    /// Pushes a batch of mapped records to the cloud target.
+    /// Pushes a batch of records to the cloud service.
+    /// Handles create vs. update logic internally.
     /// </summary>
-    /// <param name="category">"assets" or "users".</param>
-    /// <param name="records">List of field->value dictionaries ready to POST/PUT.</param>
     Task<SyncResult> PushRecordsAsync(string category, IReadOnlyList<Dictionary<string, object>> records);
 }
 

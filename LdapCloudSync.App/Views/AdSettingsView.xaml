@@ -83,7 +83,7 @@
                              AcceptsReturn="True" TextWrapping="Wrap"
                              MinHeight="50" MaxHeight="100"
                              VerticalScrollBarVisibility="Auto"
-                             ToolTip="One per line, e.g.&#x0a;nns.nngov.local/14-Fire/14-Users&#x0a;nns.nngov.local/12-Police/12-Users" />
+                             ToolTip="One per line, e.g.&#x0a;Domain/OU/OU/OU or CN" />
 
                     <!-- Output -->
                     <TextBlock Text="Result:" Style="{StaticResource FieldLabel}" />

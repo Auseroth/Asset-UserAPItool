@@ -1,12 +1,12 @@
 #Requires -RunAsAdministrator
 <#
-    Installs the LdapCloudSync Windows Service.
+    Installs the LDAPult Windows Service.
     Run from an elevated PowerShell prompt.
 #>
 
-$ServiceName = "LdapCloudSync"
-$DisplayName = "LDAP Cloud Sync Service"
-$Description = "Synchronizes Active Directory objects to cloud services (Reftab, Snipe-IT, etc.)"
+$ServiceName = "LDAPult"
+$DisplayName = "LDAPult - AD to Cloud Sync Service"
+$Description = "Launches Active Directory objects to cloud services (Reftab, Snipe-IT, etc.)"
 $ExePath = Join-Path $PSScriptRoot "LdapCloudSync.Service.exe"
 
 if (-not (Test-Path $ExePath)) {
@@ -33,7 +33,7 @@ New-Service -Name $ServiceName `
     -StartupType Automatic
 
 # Create ProgramData directory
-$dataDir = Join-Path $env:ProgramData "LdapCloudSync"
+$dataDir = Join-Path $env:ProgramData "LDAPult"
 if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
     Write-Host "Created data directory: $dataDir" -ForegroundColor Green

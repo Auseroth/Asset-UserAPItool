@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:LdapCloudSync.App.ViewModels"
         xmlns:views="clr-namespace:LdapCloudSync.App.Views"
-        Title="LDAP Cloud Sync - Configuration"
+        Title="LDAPult - Configuration"
         Width="1100" Height="750" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource SurfaceBrush}">
