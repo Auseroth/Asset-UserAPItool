@@ -669,16 +669,29 @@ public sealed class CloudTargetViewModel : ViewModelBase
             if (client is AssetPandaClient apClient)
             {
                 var accounts = await apClient.GetAccountsAsync();
+
+                if (accounts.Count == 0)
+                {
+                    CloudConnectionStatus = "No accounts returned. Check API Key and Secret.";
+                    return;
+                }
+
                 ApAccounts.Clear();
                 foreach (var (id, name) in accounts)
                     ApAccounts.Add(new ApIdNameItem { Id = id, Name = name });
 
                 CloudConnectionStatus = $"Loaded {accounts.Count} accounts.";
             }
+            else
+            {
+                CloudConnectionStatus = $"Wrong client type: {client.GetType().Name}. Expected AssetPandaClient.";
+            }
         }
         catch (Exception ex)
         {
             CloudConnectionStatus = $"Account fetch failed: {ex.Message}";
+            if (ex.InnerException is not null)
+                CloudConnectionStatus += $" ({ex.InnerException.Message})";
         }
     }
 
@@ -686,23 +699,42 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         try
         {
+            if (string.IsNullOrEmpty(ApAccountId))
+            {
+                CloudConnectionStatus = "Select an Account first.";
+                return;
+            }
+
             CloudConnectionStatus = "Fetching Asset Panda modules...";
             var targetConfig = BuildTargetConfig();
             using var client = CloudClientFactory.CreateClient(targetConfig);
 
             if (client is AssetPandaClient apClient)
             {
-                var modules = await apClient.GetModulesAsync();
+                var modules = await apClient.GetModulesAsync(ApAccountId);
+
+                if (modules.Count == 0)
+                {
+                    CloudConnectionStatus = "No modules returned for this account.";
+                    return;
+                }
+
                 ApModules.Clear();
                 foreach (var (id, name) in modules)
                     ApModules.Add(new ApIdNameItem { Id = id, Name = name });
 
                 CloudConnectionStatus = $"Loaded {modules.Count} modules.";
             }
+            else
+            {
+                CloudConnectionStatus = $"Wrong client type: {client.GetType().Name}. Expected AssetPandaClient.";
+            }
         }
         catch (Exception ex)
         {
             CloudConnectionStatus = $"Module fetch failed: {ex.Message}";
+            if (ex.InnerException is not null)
+                CloudConnectionStatus += $" ({ex.InnerException.Message})";
         }
     }
 
@@ -1062,6 +1094,29 @@ public sealed class CloudTargetViewModel : ViewModelBase
         ProviderType = Config.ProviderType;
 
         // Asset Panda discovery IDs
+        // Asset Panda discovery IDs — seed placeholder items BEFORE setting
+        // SelectedValue so WPF doesn't clear the binding when ItemsSource is empty.
+        if (!string.IsNullOrEmpty(Config.ApAccountId))
+        {
+            ApAccounts.Clear();
+            ApAccounts.Add(new ApIdNameItem { Id = Config.ApAccountId, Name = Config.ApAccountId });
+        }
+        if (!string.IsNullOrEmpty(Config.ApModuleId))
+        {
+            ApModules.Clear();
+            ApModules.Add(new ApIdNameItem { Id = Config.ApModuleId, Name = Config.ApModuleId });
+        }
+        if (!string.IsNullOrEmpty(Config.ApAssetsCollectionId))
+        {
+            ApAssetsCollections.Clear();
+            ApAssetsCollections.Add(new ApIdNameItem { Id = Config.ApAssetsCollectionId, Name = Config.ApAssetsCollectionId });
+        }
+        if (!string.IsNullOrEmpty(Config.ApUsersCollectionId))
+        {
+            ApUsersCollections.Clear();
+            ApUsersCollections.Add(new ApIdNameItem { Id = Config.ApUsersCollectionId, Name = Config.ApUsersCollectionId });
+        }
+
         ApAccountId = Config.ApAccountId;
         ApModuleId = Config.ApModuleId;
         ApAssetsCollectionId = Config.ApAssetsCollectionId;
@@ -1071,6 +1126,12 @@ public sealed class CloudTargetViewModel : ViewModelBase
         if (ShowCategorySelector)
         {
              _ = LoadReftabDataAsync();
+        }
+
+        // Auto-resolve AP friendly names in background
+        if (ShowApSettings && !string.IsNullOrEmpty(Config.ApAccountId))
+        {
+            _ = LoadApDiscoveryDataAsync();
         }
     }
 
@@ -1082,6 +1143,32 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         await RefreshCategoriesAsync();
         await RefreshLocationsAsync();
+    }
+
+    /// <summary>
+    /// Refreshes AP dropdowns sequentially so saved IDs resolve to friendly names.
+    /// Each step replaces the placeholder items with real data from the API,
+    /// and WPF re-selects the saved ID automatically since SelectedValue still matches.
+    /// </summary>
+    private async Task LoadApDiscoveryDataAsync()
+    {
+        try
+        {
+            await RefreshApAccountsAsync();
+
+            if (!string.IsNullOrEmpty(ApModuleId))
+                await RefreshApModulesAsync();
+
+            if (!string.IsNullOrEmpty(ApAssetsCollectionId))
+                await RefreshApCollectionsAsync("assets");
+
+            if (!string.IsNullOrEmpty(ApUsersCollectionId))
+                await RefreshApCollectionsAsync("users");
+        }
+        catch
+        {
+            // Silent — placeholders with IDs remain if API is unreachable
+        }
     }
 
     public void ApplyToConfig()

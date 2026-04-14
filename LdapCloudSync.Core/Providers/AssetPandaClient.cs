@@ -52,6 +52,32 @@ public sealed class AssetPandaClient : BaseCloudClient
         request.Headers.TryAddWithoutValidation("accept", "application/json");
         request.Headers.TryAddWithoutValidation("Access-Key-Id", conn.ApiKey);
         request.Headers.TryAddWithoutValidation("Access-Key-Secret", conn.ApiSecret);
+        request.Headers.TryAddWithoutValidation("User-Agent", "LDAPult");
+    }
+
+    /// <summary>
+    /// AP doesn't use GET endpoints for test connectivity.
+    /// Instead, test by fetching accounts — if that succeeds, the connection is valid.
+    /// </summary>
+    public override async Task<(bool Success, string Message)> TestConnectionAsync()
+    {
+        try
+        {
+            var accounts = await GetAccountsAsync();
+
+            if (accounts.Count > 0)
+            {
+                _log.Information("AP connection test PASSED: {Count} accounts found", accounts.Count);
+                return (true, $"Connected successfully. Found {accounts.Count} account(s).");
+            }
+
+            return (false, "Connected but no accounts returned. Check API key permissions.");
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "AP connection test failed");
+            return (false, $"Connection failed: {ex.Message}");
+        }
     }
 
     //  Discovery Chain 
@@ -65,16 +91,28 @@ public sealed class AssetPandaClient : BaseCloudClient
         try
         {
             var request = BuildRequest(HttpMethod.Get, "/accounts");
+
+            _log.Information("AP: GET {Url}", request.RequestUri);
+
             var response = await _httpClient.SendAsync(request);
-
             var json = await response.Content.ReadAsStringAsync();
-            _log.Information("AP Accounts response ({StatusCode}): {Length} chars",
-                (int)response.StatusCode, json.Length);
 
-            response.EnsureSuccessStatusCode();
+            _log.Information("AP Accounts response ({StatusCode}): {Body}",
+                (int)response.StatusCode, Truncate(json, 2000));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _log.Error("AP Accounts failed: HTTP {StatusCode} — {Body}",
+                    (int)response.StatusCode, Truncate(json, 1000));
+                return [];
+            }
 
             var items = ParseResponseArray(json);
-            if (items is null) return [];
+            if (items is null)
+            {
+                _log.Warning("AP: ParseResponseArray returned null for accounts");
+                return [];
+            }
 
             var results = new List<(string Id, string Name)>();
             foreach (var item in items)
@@ -85,8 +123,8 @@ public sealed class AssetPandaClient : BaseCloudClient
                       ?? item["accountId"]?.GetValue<string>()
                       ?? string.Empty;
 
-                var name = item["displayName"]?.GetValue<string>()
-                        ?? item["name"]?.GetValue<string>()
+                var name = item["name"]?.GetValue<string>()
+                        ?? item["displayName"]?.GetValue<string>()
                         ?? string.Empty;
 
                 if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
@@ -98,30 +136,44 @@ public sealed class AssetPandaClient : BaseCloudClient
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to fetch Asset Panda accounts");
+            _log.Error(ex, "Failed to fetch AP accounts: {Message}", ex.Message);
             return [];
         }
     }
 
     /// <summary>
-    /// Fetches all modules accessible by the API key.
+    /// Fetches all modules for a given account.
+    /// The accountId is required by the AP API.
     /// Returns (id, displayName) pairs for the Module dropdown.
     /// </summary>
-    public async Task<List<(string Id, string Name)>> GetModulesAsync()
+    public async Task<List<(string Id, string Name)>> GetModulesAsync(string accountId)
     {
         try
         {
-            var request = BuildRequest(HttpMethod.Get, "/modules");
+            if (string.IsNullOrEmpty(accountId))
+            {
+                _log.Warning("AP: GetModulesAsync called without accountId");
+                return [];
+            }
+
+            var request = BuildRequest(HttpMethod.Get, $"/modules?accountId={accountId}");
+
+            _log.Information("AP: Sending GET {Url}", request.RequestUri);
+
             var response = await _httpClient.SendAsync(request);
 
             var json = await response.Content.ReadAsStringAsync();
-            _log.Information("AP Modules response ({StatusCode}): {Length} chars",
-                (int)response.StatusCode, json.Length);
+            _log.Information("AP Modules response ({StatusCode}): {Body}",
+                (int)response.StatusCode, Truncate(json, 2000));
 
             response.EnsureSuccessStatusCode();
 
             var items = ParseResponseArray(json);
-            if (items is null) return [];
+            if (items is null)
+            {
+                _log.Warning("AP: ParseResponseArray returned null for modules");
+                return [];
+            }
 
             var results = new List<(string Id, string Name)>();
             foreach (var item in items)
@@ -145,7 +197,8 @@ public sealed class AssetPandaClient : BaseCloudClient
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to fetch Asset Panda modules");
+            _log.Error(ex, "Failed to fetch Asset Panda modules: {Message} | Inner: {Inner}",
+                ex.Message, ex.InnerException?.Message ?? "(none)");
             return [];
         }
     }
@@ -222,14 +275,54 @@ public sealed class AssetPandaClient : BaseCloudClient
             var response = await _httpClient.SendAsync(request);
 
             var json = await response.Content.ReadAsStringAsync();
-            _log.Information("AP Columns response ({StatusCode}): {Length} chars",
-                (int)response.StatusCode, json.Length);
+            _log.Information("AP Columns response ({StatusCode}): {Body}",
+                (int)response.StatusCode, Truncate(json, 3000));
 
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                _log.Error("AP Columns failed: HTTP {StatusCode} — {Body}",
+                    (int)response.StatusCode, Truncate(json, 1000));
+                return [];
+            }
 
-            var items = ParseResponseArray(json);
-            if (items is null) return [];
+            // AP may nest columns as: {"data": [...]} or {"data": {"columns": [...] }}
+            var root = JsonNode.Parse(json);
+            JsonArray? items = null;
 
+            if (root is JsonArray arr)
+            {
+                items = arr;
+            }
+            else if (root is JsonObject obj)
+            {
+                var data = obj["data"];
+                if (data is JsonArray dataArr)
+                {
+                    items = dataArr;
+                }
+                else if (data is JsonObject dataObj)
+                {
+                    // Try nested paths: data.columns, data.items, data.records
+                    items = dataObj["columns"]?.AsArray()
+                         ?? dataObj["items"]?.AsArray()
+                         ?? dataObj["records"]?.AsArray();
+                }
+
+                // Fallback to top-level keys
+                items ??= obj["columns"]?.AsArray()
+                       ?? obj["items"]?.AsArray()
+                       ?? obj["results"]?.AsArray()
+                       ?? obj["records"]?.AsArray();
+            }
+
+            if (items is null || items.Count == 0)
+            {
+                _log.Warning("AP: Could not find columns array in response. Raw: {Json}",
+                    Truncate(json, 1000));
+                return [];
+            }
+
+            _log.Information("AP: Parsing {Count} column items", items.Count);
             if (items.Count > 0)
                 _log.Information("AP first column: {Item}", items[0]?.ToJsonString());
 
@@ -259,7 +352,6 @@ public sealed class AssetPandaClient : BaseCloudClient
                 }
             }
 
-            // Cache for use during sync
             _columnNameToId = nameToId;
             _columnIdToName = idToName;
 
@@ -270,7 +362,7 @@ public sealed class AssetPandaClient : BaseCloudClient
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to fetch Asset Panda collection columns");
+            _log.Error(ex, "Failed to fetch AP collection columns: {Message}", ex.Message);
             return [];
         }
     }
@@ -580,7 +672,7 @@ public sealed class AssetPandaClient : BaseCloudClient
             if (root is JsonArray arr)
                 items = arr;
             else if (root is JsonObject obj)
-                items = obj["data"]?.AsArray()
+                items = obj["data"]?["records"]?.AsArray()
                      ?? obj["items"]?.AsArray()
                      ?? obj["results"]?.AsArray()
                      ?? obj["records"]?.AsArray();
