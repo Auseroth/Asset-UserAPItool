@@ -947,43 +947,57 @@ public sealed class CloudTargetViewModel : ViewModelBase
     private async Task DiscoverAdComputerFieldsAsync()
     {
         CloudConnectionStatus = "Discovering AD computer attributes...";
-        var adConfig = _configService.Current.ActiveDirectory;
-        using var provider = new ActiveDirectoryProvider(adConfig);
-        var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.Computer);
-        DiscoveredAdComputerAttributes.Clear();
-        foreach (var a in attrs) DiscoveredAdComputerAttributes.Add(a);
-
-        // Fetch one sample record for live mapping preview
         try
         {
-            var sampleRecords = await provider.QueryAsync(DirectoryObjectType.Computer, attrs.ToList(), maxResults: 1);
-            if (sampleRecords.Count > 0)
-                SetAssetSampleRecord(sampleRecords[0]);
-        }
-        catch { /* Preview just won't have live data */ }
+            var adConfig = _configService.Current.ActiveDirectory;
+            using var provider = new ActiveDirectoryProvider(adConfig);
+            var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.Computer);
+            DiscoveredAdComputerAttributes.Clear();
+            foreach (var a in attrs) DiscoveredAdComputerAttributes.Add(a);
 
-        CloudConnectionStatus = $"Discovered {attrs.Count} AD computer attributes.";
+            // Fetch one sample record for live mapping preview
+            try
+            {
+                var sampleRecords = await provider.QueryAsync(DirectoryObjectType.Computer, attrs.ToList(), maxResults: 1);
+                if (sampleRecords.Count > 0)
+                    SetAssetSampleRecord(sampleRecords[0]);
+            }
+            catch { /* Preview just won't have live data */ }
+
+            CloudConnectionStatus = $"Discovered {attrs.Count} AD computer attributes.";
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"AD discovery failed: {ex.Message}";
+        }
     }
 
     private async Task DiscoverAdUserFieldsAsync()
     {
         CloudConnectionStatus = "Discovering AD user attributes...";
-        var adConfig = _configService.Current.ActiveDirectory;
-        using var provider = new ActiveDirectoryProvider(adConfig);
-        var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.User);
-        DiscoveredAdUserAttributes.Clear();
-        foreach (var a in attrs) DiscoveredAdUserAttributes.Add(a);
-
-        // Fetch one sample record for live mapping preview
         try
         {
-            var sampleRecords = await provider.QueryAsync(DirectoryObjectType.User, attrs.ToList(), maxResults: 1);
-            if (sampleRecords.Count > 0)
-                SetUserSampleRecord(sampleRecords[0]);
-        }
-        catch { /* Preview just won't have live data */ }
+            var adConfig = _configService.Current.ActiveDirectory;
+            using var provider = new ActiveDirectoryProvider(adConfig);
+            var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.User);
+            DiscoveredAdUserAttributes.Clear();
+            foreach (var a in attrs) DiscoveredAdUserAttributes.Add(a);
 
-        CloudConnectionStatus = $"Discovered {attrs.Count} AD user attributes.";
+            // Fetch one sample record for live mapping preview
+            try
+            {
+                var sampleRecords = await provider.QueryAsync(DirectoryObjectType.User, attrs.ToList(), maxResults: 1);
+                if (sampleRecords.Count > 0)
+                    SetUserSampleRecord(sampleRecords[0]);
+            }
+            catch { /* Preview just won't have live data */ }
+
+            CloudConnectionStatus = $"Discovered {attrs.Count} AD user attributes.";
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"AD discovery failed: {ex.Message}";
+        }
     }
 
     private async Task<IReadOnlyList<string>> DiscoverCloudFieldsAsync(string category)
@@ -1147,23 +1161,57 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     /// <summary>
     /// Refreshes AP dropdowns sequentially so saved IDs resolve to friendly names.
-    /// Each step replaces the placeholder items with real data from the API,
-    /// and WPF re-selects the saved ID automatically since SelectedValue still matches.
+    /// Uses Config directly instead of BuildTargetConfig to avoid ApplyToConfig race conditions.
     /// </summary>
     private async Task LoadApDiscoveryDataAsync()
     {
         try
         {
-            await RefreshApAccountsAsync();
+            using var client = CloudClientFactory.CreateClient(Config);
+            if (client is not AssetPandaClient apClient) return;
+
+            var accounts = await apClient.GetAccountsAsync();
+            if (accounts.Count > 0)
+            {
+                ApAccounts.Clear();
+                foreach (var (id, name) in accounts)
+                    ApAccounts.Add(new ApIdNameItem { Id = id, Name = name });
+            }
 
             if (!string.IsNullOrEmpty(ApModuleId))
-                await RefreshApModulesAsync();
+            {
+                var modules = await apClient.GetModulesAsync(ApAccountId);
+                if (modules.Count > 0)
+                {
+                    ApModules.Clear();
+                    foreach (var (id, name) in modules)
+                        ApModules.Add(new ApIdNameItem { Id = id, Name = name });
+                }
+            }
 
             if (!string.IsNullOrEmpty(ApAssetsCollectionId))
-                await RefreshApCollectionsAsync("assets");
+            {
+                var collections = await apClient.GetCollectionsAsync(ApAccountId, ApModuleId);
+                if (collections.Count > 0)
+                {
+                    ApAssetsCollections.Clear();
+                    foreach (var (id, name) in collections)
+                        ApAssetsCollections.Add(new ApIdNameItem { Id = id, Name = name });
+                }
+            }
 
             if (!string.IsNullOrEmpty(ApUsersCollectionId))
-                await RefreshApCollectionsAsync("users");
+            {
+                var collections = await apClient.GetCollectionsAsync(ApAccountId, ApModuleId);
+                if (collections.Count > 0)
+                {
+                    ApUsersCollections.Clear();
+                    foreach (var (id, name) in collections)
+                        ApUsersCollections.Add(new ApIdNameItem { Id = id, Name = name });
+                }
+            }
+
+            CloudConnectionStatus = "AP discovery data loaded.";
         }
         catch
         {

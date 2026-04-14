@@ -22,7 +22,7 @@ public sealed class MainViewModel : ViewModelBase
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         CheckServiceStatusCommand = new AsyncRelayCommand(CheckServiceStatusAsync);
         TriggerSyncCommand = new AsyncRelayCommand(TriggerSyncAsync, () => IsServiceRunning);
-        TriggerTestSyncCommand = new AsyncRelayCommand(TriggerTestSyncAsync, () => IsServiceRunning);
+        TriggerTestSyncCommand = new AsyncRelayCommand(TriggerTestSyncAsync);
         ReloadServiceConfigCommand = new AsyncRelayCommand(ReloadServiceConfigAsync, () => IsServiceRunning);
 
         AdSettingsVm.OUsDiscovered += RebuildTargetOUSelections;
@@ -200,16 +200,38 @@ public sealed class MainViewModel : ViewModelBase
 
             var config = _configService.Current;
             var captures = new List<DryRunCapture>();
+            var enabledTargets = config.CloudTargets.Where(t => t.Enabled).ToList();
+
+            if (enabledTargets.Count == 0)
+            {
+                StatusMessage = "No enabled targets. Check the checkbox next to each target you want to sync.";
+                return;
+            }
+
+            StatusMessage = $"Testing {enabledTargets.Count} enabled target(s)...";
 
             // Dry-run each enabled target/category locally
-            foreach (var target in config.CloudTargets.Where(t => t.Enabled))
+            foreach (var target in enabledTargets)
             {
+                StatusMessage = $"Testing target: {target.Name}...";
+
                 var categoriesToTest = new List<(string Name, SyncCategoryConfig Config, DirectoryObjectType ObjType)>();
 
                 if (target.Assets.Enabled && target.Assets.FieldMappings.Count > 0)
                     categoriesToTest.Add(("assets", target.Assets, DirectoryObjectType.Computer));
                 if (target.Users.Enabled && target.Users.FieldMappings.Count > 0)
                     categoriesToTest.Add(("users", target.Users, DirectoryObjectType.User));
+
+                if (categoriesToTest.Count == 0)
+                {
+                    captures.Add(new DryRunCapture
+                    {
+                        Method = "INFO",
+                        Endpoint = $"[{target.Name}]",
+                        JsonBody = "\"No categories enabled or no field mappings configured for this target.\""
+                    });
+                    continue;
+                }
 
                 foreach (var (category, categoryConfig, objectType) in categoriesToTest)
                 {
@@ -270,7 +292,7 @@ public sealed class MainViewModel : ViewModelBase
             // Show preview dialog
             var previewVm = new TestSyncPreviewViewModel
             {
-                Summary = $"{captures.Count} request(s) across {config.CloudTargets.Count(t => t.Enabled)} target(s)  |  {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                Summary = $"{captures.Count} request(s) across {enabledTargets.Count} target(s)  |  {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
             };
             foreach (var c in captures)
                 previewVm.Captures.Add(c);
@@ -284,6 +306,12 @@ public sealed class MainViewModel : ViewModelBase
 
             if (dialog.Confirmed)
             {
+                if (!IsServiceRunning)
+                {
+                    StatusMessage = "Preview complete but service is not running — cannot execute sync. Start the service first.";
+                    return;
+                }
+
                 StatusMessage = "Sending test sync (10 records) to service...";
                 var response = await IpcClient.TriggerTestSyncAsync(maxRecords: 10);
                 StatusMessage = response.Success

@@ -80,6 +80,42 @@ public sealed class AssetPandaClient : BaseCloudClient
         }
     }
 
+    /// <summary>
+    /// Override cloud field discovery for AP — uses GetCollectionColumnsAsync
+    /// instead of the base class GET endpoint approach, which doesn't apply to AP.
+    /// </summary>
+    public override async Task<(IReadOnlyList<string> Fields, string RawResponse)> DiscoverFieldsAsync(string category)
+    {
+        if (string.IsNullOrEmpty(_target.ApAccountId) ||
+            string.IsNullOrEmpty(_target.ApModuleId))
+        {
+            return ([], "Asset Panda Account and Module must be selected first.");
+        }
+
+        var collectionId = category.Equals("assets", StringComparison.OrdinalIgnoreCase)
+            ? _target.ApAssetsCollectionId
+            : _target.ApUsersCollectionId;
+
+        if (string.IsNullOrEmpty(collectionId))
+        {
+            return ([], $"No collection selected for {category}. Use the AP discovery dropdowns first.");
+        }
+
+        var columns = await GetCollectionColumnsAsync(_target.ApAccountId, _target.ApModuleId, collectionId);
+
+        if (columns.Count == 0)
+        {
+            return ([], "No columns returned. Check collection selection and API permissions.");
+        }
+
+        var fieldNames = columns.Select(c => c.DisplayName).ToList();
+        var rawJson = System.Text.Json.JsonSerializer.Serialize(
+            columns.Select(c => new { c.Id, c.DisplayName }),
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+        return (fieldNames, rawJson);
+    }
+
     //  Discovery Chain 
 
     /// <summary>
@@ -285,7 +321,6 @@ public sealed class AssetPandaClient : BaseCloudClient
                 return [];
             }
 
-            // AP may nest columns as: {"data": [...]} or {"data": {"columns": [...] }}
             var root = JsonNode.Parse(json);
             JsonArray? items = null;
 
@@ -295,24 +330,15 @@ public sealed class AssetPandaClient : BaseCloudClient
             }
             else if (root is JsonObject obj)
             {
-                var data = obj["data"];
-                if (data is JsonArray dataArr)
-                {
-                    items = dataArr;
-                }
-                else if (data is JsonObject dataObj)
-                {
-                    // Try nested paths: data.columns, data.items, data.records
-                    items = dataObj["columns"]?.AsArray()
-                         ?? dataObj["items"]?.AsArray()
-                         ?? dataObj["records"]?.AsArray();
-                }
-
-                // Fallback to top-level keys
-                items ??= obj["columns"]?.AsArray()
-                       ?? obj["items"]?.AsArray()
-                       ?? obj["results"]?.AsArray()
-                       ?? obj["records"]?.AsArray();
+                // AP returns: { "data": { "columns": { "all": [...] } } }
+                items = AsArraySafe(obj["data"]?["columns"]?["all"])
+                     ?? AsArraySafe(obj["data"]?["columns"])
+                     ?? AsArraySafe(obj["data"])
+                     ?? AsArraySafe(obj["columns"]?["all"])
+                     ?? AsArraySafe(obj["columns"])
+                     ?? AsArraySafe(obj["items"])
+                     ?? AsArraySafe(obj["results"])
+                     ?? AsArraySafe(obj["records"]);
             }
 
             if (items is null || items.Count == 0)
@@ -527,7 +553,19 @@ public sealed class AssetPandaClient : BaseCloudClient
                 var obj = new JsonObject();
                 foreach (var kvp in record)
                 {
-                    obj[kvp.Key] = JsonValue.Create(kvp.Value);
+                    // Serialize through JsonSerializer to produce a proper JsonNode
+                    // that doesn't require a TypeInfoResolver at write time.
+                    obj[kvp.Key] = kvp.Value switch
+                    {
+                        null => null,
+                        string s => JsonValue.Create(s),
+                        bool b => JsonValue.Create(b),
+                        int i => JsonValue.Create(i),
+                        long l => JsonValue.Create(l),
+                        double d => JsonValue.Create(d),
+                        decimal m => JsonValue.Create(m),
+                        _ => JsonNode.Parse(JsonSerializer.Serialize(kvp.Value))
+                    };
                 }
                 recordsArray.Add(obj);
             }
@@ -543,7 +581,7 @@ public sealed class AssetPandaClient : BaseCloudClient
                 ["records"] = recordsArray
             };
 
-            var jsonBody = body.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+            var jsonBody = body.ToJsonString();
             _log.Information("AP {Method} /collection-records: {RecordCount} records, {BodyLength} chars",
                 method.Method, records.Count, jsonBody.Length);
 
@@ -576,7 +614,7 @@ public sealed class AssetPandaClient : BaseCloudClient
 
             // Parse response to count successes/failures per record
             var root = JsonNode.Parse(responseJson);
-            var dataRecords = root?["data"]?["records"]?.AsArray();
+            var dataRecords = AsArraySafe(root?["data"]?["records"]);
 
             if (dataRecords is not null)
             {
@@ -592,7 +630,7 @@ public sealed class AssetPandaClient : BaseCloudClient
                     else
                     {
                         failed++;
-                        var recordErrors = item["errors"]?.AsArray();
+                        var recordErrors = AsArraySafe(item["errors"]);
                         if (recordErrors is not null && recordErrors.Count > 0)
                         {
                             var errorMsg = string.Join("; ", recordErrors.Select(e => e?.ToString() ?? ""));
@@ -780,6 +818,13 @@ public sealed class AssetPandaClient : BaseCloudClient
             return _target.ApUsersCollectionId;
         return _target.ApAssetsCollectionId;
     }
+    /// <summary>
+    /// Safely attempts to interpret a JsonNode as a JsonArray.
+    /// Returns null if the node is null or not actually an array,
+    /// avoiding the InvalidOperationException from JsonNode.AsArray().
+    /// </summary>
+    private static JsonArray? AsArraySafe(JsonNode? node)
+        => node is JsonArray arr ? arr : null;
 
     private JsonArray? ParseResponseArray(string json)
     {

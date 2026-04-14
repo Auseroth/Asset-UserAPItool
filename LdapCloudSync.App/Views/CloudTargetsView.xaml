@@ -24,9 +24,31 @@
 
                 <ListBox ItemsSource="{Binding Targets}"
                          SelectedItem="{Binding SelectedTarget}"
-                         DisplayMemberPath="Name"
                          BorderThickness="0" Background="Transparent"
-                         Margin="0,4,0,0" />
+                         Margin="0,4,0,0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,6,0"
+                                          ToolTip="Enable this target for sync" />
+                                <TextBlock VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding Name}" />
+                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Enabled}" Value="False">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                    <Setter Property="FontStyle" Value="Italic" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </DockPanel>
         </Border>
 
