@@ -1,7 +1,7 @@
 namespace LdapCloudSync.Core.Models;
 
 /// <summary>
-/// Configuration for a single cloud target (e.g., Reftab, Snipe-IT).
+/// Configuration for a single cloud target (e.g., Reftab, Snipe-IT, Asset Panda).
 /// </summary>
 public sealed class CloudTargetConfig
 {
@@ -24,6 +24,33 @@ public sealed class CloudTargetConfig
     public SyncCategoryConfig Assets { get; set; } = new();
     public SyncCategoryConfig Users { get; set; } = new();
     public ScheduleConfig Schedule { get; set; } = new();
+
+    // ?? Asset Panda Discovery IDs ??????????????????????????????????
+    // These are populated via the UI discovery chain and persisted so
+    // the service can build dynamic endpoints at sync time without
+    // requiring interactive discovery.
+
+    /// <summary>
+    /// Asset Panda account ID. Selected from GET /accounts.
+    /// </summary>
+    public string ApAccountId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Asset Panda module ID. Selected from GET /accounts/{accountId}/modules.
+    /// </summary>
+    public string ApModuleId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Asset Panda collection ID for the Assets category.
+    /// Selected from GET /modules/{moduleId}/collections.
+    /// </summary>
+    public string ApAssetsCollectionId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Asset Panda collection ID for the Users/People category.
+    /// Selected from GET /modules/{moduleId}/collections.
+    /// </summary>
+    public string ApUsersCollectionId { get; set; } = string.Empty;
 }
 
 /// <summary>

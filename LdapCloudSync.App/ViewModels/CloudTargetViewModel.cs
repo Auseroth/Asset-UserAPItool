@@ -49,6 +49,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
         PreviewAssetMappingsCommand = new AsyncRelayCommand(PreviewAssetMappingsAsync);
         PreviewUserMappingsCommand = new AsyncRelayCommand(PreviewUserMappingsAsync);
         RunLocalTestSyncCommand = new AsyncRelayCommand(RunLocalTestSyncAsync);
+
+        // Asset Panda discovery commands
+        RefreshApAccountsCommand = new AsyncRelayCommand(RefreshApAccountsAsync);
+        RefreshApModulesCommand = new AsyncRelayCommand(RefreshApModulesAsync);
+        RefreshApAssetsCollectionsCommand = new AsyncRelayCommand(() => RefreshApCollectionsAsync("assets"));
+        RefreshApUsersCollectionsCommand = new AsyncRelayCommand(() => RefreshApCollectionsAsync("users"));
+        RefreshApAssetColumnsCommand = new AsyncRelayCommand(() => RefreshApColumnsAsync("assets"));
+        RefreshApUserColumnsCommand = new AsyncRelayCommand(() => RefreshApColumnsAsync("users"));
     }
 
     #region Identity & Preset
@@ -468,6 +476,301 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public ICommand PreviewUserMappingsCommand { get; }
     public ICommand RunLocalTestSyncCommand { get; }
 
+    // Asset Panda commands
+    public ICommand RefreshApAccountsCommand { get; }
+    public ICommand RefreshApModulesCommand { get; }
+    public ICommand RefreshApAssetsCollectionsCommand { get; }
+    public ICommand RefreshApUsersCollectionsCommand { get; }
+    public ICommand RefreshApAssetColumnsCommand { get; }
+    public ICommand RefreshApUserColumnsCommand { get; }
+
+    #endregion
+
+    #region Provider Type & Visibility
+
+    private string _providerType = "Generic (Standard REST)";
+    public string ProviderType
+    {
+        get => _providerType;
+        set
+        {
+            if (SetProperty(ref _providerType, value))
+            {
+                OnPropertyChanged(nameof(ShowCategorySelector));
+                OnPropertyChanged(nameof(ShowLocationSelector));
+                OnPropertyChanged(nameof(ShowApSettings));
+                OnPropertyChanged(nameof(ShowApAssetSettings));
+                OnPropertyChanged(nameof(ShowApUserSettings));
+                OnPropertyChanged(nameof(HideGenericEndpoints));
+            }
+        }
+    }
+
+    public bool ShowCategorySelector => ProviderType == "Reftab";
+    public bool ShowLocationSelector => ProviderType == "Reftab";
+    public bool ShowApSettings => ProviderType == "AssetPanda";
+    public bool ShowApAssetSettings => ProviderType == "AssetPanda";
+    public bool ShowApUserSettings => ProviderType == "AssetPanda";
+    public bool HideGenericEndpoints => ProviderType == "AssetPanda";
+
+    #endregion
+
+    #region Reftab-Specific (Categories, Locations)
+
+    public class CategoryItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public class LocationItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public string CategorySelector { get; set; } = string.Empty;
+    public ObservableCollection<CategoryItem> AssetCategories { get; } = [];
+    public ObservableCollection<LocationItem> Locations { get; } = new();
+
+    private int _assetsTargetCategoryId;
+    public int AssetsTargetCategoryId
+    {
+        get => _assetsTargetCategoryId;
+        set => SetProperty(ref _assetsTargetCategoryId, value);
+    }
+
+    private int _selectedLocationId;
+    public int SelectedLocationId
+    {
+        get => _selectedLocationId;
+        set => SetProperty(ref _selectedLocationId, value);
+    }
+
+    private async Task RefreshCategoriesAsync()
+    {
+        try
+        {
+            if (ProviderType != "Reftab")
+            {
+                CloudConnectionStatus = "Category discovery not supported for this provider.";
+                return;
+            }
+
+            CloudConnectionStatus = "Fetching categories...";
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is ReftabClient reftabClient)
+            {
+                var categories = await reftabClient.GetCategoriesAsync();
+
+                AssetCategories.Clear();
+                AssetCategories.Add(new CategoryItem { Id = 0, Name = "(None - use Reftab default)" });
+                foreach (var (cid, name) in categories)
+                {
+                    AssetCategories.Add(new CategoryItem { Id = cid, Name = name });
+                }
+
+                CloudConnectionStatus = $"Loaded {categories.Count} categories.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Category fetch failed: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshLocationsAsync()
+    {
+        try
+        {
+            if (ProviderType != "Reftab")
+            {
+                CloudConnectionStatus = "Location discovery not supported for this provider.";
+                return;
+            }
+
+            CloudConnectionStatus = "Fetching locations...";
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is ReftabClient reftabClient)
+            {
+                var locations = await reftabClient.GetLocationsAsync();
+
+                Locations.Clear();
+                Locations.Add(new LocationItem { Id = 0, Name = "(None)" });
+                foreach (var (id, name) in locations)
+                {
+                    Locations.Add(new LocationItem { Id = id, Name = name });
+                }
+
+                CloudConnectionStatus = $"Loaded {locations.Count} locations.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Location fetch failed: {ex.Message}";
+        }
+    }
+
+    #endregion
+
+    #region Asset Panda Discovery
+
+    public class ApIdNameItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public ObservableCollection<ApIdNameItem> ApAccounts { get; } = [];
+    public ObservableCollection<ApIdNameItem> ApModules { get; } = [];
+    public ObservableCollection<ApIdNameItem> ApAssetsCollections { get; } = [];
+    public ObservableCollection<ApIdNameItem> ApUsersCollections { get; } = [];
+
+    private string _apAccountId = string.Empty;
+    public string ApAccountId
+    {
+        get => _apAccountId;
+        set => SetProperty(ref _apAccountId, value);
+    }
+
+    private string _apModuleId = string.Empty;
+    public string ApModuleId
+    {
+        get => _apModuleId;
+        set => SetProperty(ref _apModuleId, value);
+    }
+
+    private string _apAssetsCollectionId = string.Empty;
+    public string ApAssetsCollectionId
+    {
+        get => _apAssetsCollectionId;
+        set => SetProperty(ref _apAssetsCollectionId, value);
+    }
+
+    private string _apUsersCollectionId = string.Empty;
+    public string ApUsersCollectionId
+    {
+        get => _apUsersCollectionId;
+        set => SetProperty(ref _apUsersCollectionId, value);
+    }
+
+    private async Task RefreshApAccountsAsync()
+    {
+        try
+        {
+            CloudConnectionStatus = "Fetching Asset Panda accounts...";
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is AssetPandaClient apClient)
+            {
+                var accounts = await apClient.GetAccountsAsync();
+                ApAccounts.Clear();
+                foreach (var (id, name) in accounts)
+                    ApAccounts.Add(new ApIdNameItem { Id = id, Name = name });
+
+                CloudConnectionStatus = $"Loaded {accounts.Count} accounts.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Account fetch failed: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshApModulesAsync()
+    {
+        try
+        {
+            CloudConnectionStatus = "Fetching Asset Panda modules...";
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is AssetPandaClient apClient)
+            {
+                var modules = await apClient.GetModulesAsync();
+                ApModules.Clear();
+                foreach (var (id, name) in modules)
+                    ApModules.Add(new ApIdNameItem { Id = id, Name = name });
+
+                CloudConnectionStatus = $"Loaded {modules.Count} modules.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Module fetch failed: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshApCollectionsAsync(string target)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(ApAccountId) || string.IsNullOrEmpty(ApModuleId))
+            {
+                CloudConnectionStatus = "Select an Account and Module first.";
+                return;
+            }
+
+            CloudConnectionStatus = "Fetching Asset Panda collections...";
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is AssetPandaClient apClient)
+            {
+                var collections = await apClient.GetCollectionsAsync(ApAccountId, ApModuleId);
+                var targetList = target == "assets" ? ApAssetsCollections : ApUsersCollections;
+
+                targetList.Clear();
+                foreach (var (id, name) in collections)
+                    targetList.Add(new ApIdNameItem { Id = id, Name = name });
+
+                CloudConnectionStatus = $"Loaded {collections.Count} collections.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Collection fetch failed: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshApColumnsAsync(string target)
+    {
+        try
+        {
+            var collectionId = target == "assets" ? ApAssetsCollectionId : ApUsersCollectionId;
+            if (string.IsNullOrEmpty(ApAccountId) || string.IsNullOrEmpty(ApModuleId) || string.IsNullOrEmpty(collectionId))
+            {
+                CloudConnectionStatus = "Select Account, Module, and Collection first.";
+                return;
+            }
+
+            CloudConnectionStatus = "Fetching collection columns...";
+            var targetConfig = BuildTargetConfig();
+            using var client = CloudClientFactory.CreateClient(targetConfig);
+
+            if (client is AssetPandaClient apClient)
+            {
+                var columns = await apClient.GetCollectionColumnsAsync(ApAccountId, ApModuleId, collectionId);
+                var fieldList = target == "assets" ? DiscoveredAssetCloudFields : DiscoveredUserCloudFields;
+
+                fieldList.Clear();
+                foreach (var (_, displayName) in columns)
+                    fieldList.Add(displayName);
+
+                CloudConnectionStatus = $"Loaded {columns.Count} columns as cloud fields.";
+            }
+        }
+        catch (Exception ex)
+        {
+            CloudConnectionStatus = $"Column fetch failed: {ex.Message}";
+        }
+    }
+
     #endregion
 
     #region Preset Logic
@@ -758,10 +1061,16 @@ public sealed class CloudTargetViewModel : ViewModelBase
         // Provider type — must load BEFORE auto-refresh which calls ApplyToConfig
         ProviderType = Config.ProviderType;
 
-        // Auto-load Reftab-specific data (sequential to avoid race on BuildTargetConfig)
+        // Asset Panda discovery IDs
+        ApAccountId = Config.ApAccountId;
+        ApModuleId = Config.ApModuleId;
+        ApAssetsCollectionId = Config.ApAssetsCollectionId;
+        ApUsersCollectionId = Config.ApUsersCollectionId;
+
+        // Auto-load Reftab-specific data
         if (ShowCategorySelector)
         {
-            _ = LoadReftabDataAsync();
+             _ = LoadReftabDataAsync();
         }
     }
 
@@ -817,6 +1126,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Users.FieldMappings = UserMappings.Select(m => m.ToModel()).ToList();
         Config.Users.AdSearchBaseOverrides = GetSelectedUsersOUs();
         Config.Users.AdFilterOverride = UsersAdFilterOverride;
+        Config.Users.AdSourceIsGroup = UsersAdSourceIsGroup;
 
         Config.Schedule.CoupledSchedule = CoupledSchedule;
         Config.Schedule.PrimarySchedule.Type = PrimaryScheduleType;
@@ -830,6 +1140,12 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
         // Save provider type
         Config.ProviderType = ProviderType;
+
+        // Asset Panda discovery IDs
+        Config.ApAccountId = ApAccountId;
+        Config.ApModuleId = ApModuleId;
+        Config.ApAssetsCollectionId = ApAssetsCollectionId;
+        Config.ApUsersCollectionId = ApUsersCollectionId;
     }
 
     private CloudTargetConfig BuildTargetConfig()
@@ -843,126 +1159,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     #endregion
 
-    // Add after existing properties
+    #region Effective Filters & OU Selection
 
-    public bool ShowCategorySelector => ProviderType == "Reftab";
-    public bool ShowLocationSelector => ProviderType == "Reftab";
-    public string CategorySelector { get; set; }
-    public ObservableCollection<CategoryItem> AssetCategories { get; } = [];
-
-    private int _assetsTargetCategoryId;
-    public int AssetsTargetCategoryId
-    {
-        get => _assetsTargetCategoryId;
-        set => SetProperty(ref _assetsTargetCategoryId, value);
-    }
-
-    private string _providerType = "Generic (Standard REST)";
-    public string ProviderType
-    {
-        get => _providerType;
-        set
-        {
-            if (SetProperty(ref _providerType, value))
-            {
-                OnPropertyChanged(nameof(ShowCategorySelector));
-                OnPropertyChanged(nameof(ShowLocationSelector));
-            }
-        }
-    }
-
-    private async Task RefreshCategoriesAsync()
-    {
-        try
-        {
-            if (ProviderType != "Reftab")
-            {
-                CloudConnectionStatus = "Category discovery not supported for this provider.";
-                return;
-            }
-
-            CloudConnectionStatus = "Fetching categories...";
-            var targetConfig = BuildTargetConfig();
-            using var client = CloudClientFactory.CreateClient(targetConfig);
-
-            if (client is ReftabClient reftabClient)
-            {
-                var categories = await reftabClient.GetCategoriesAsync();
-
-                AssetCategories.Clear();
-                AssetCategories.Add(new CategoryItem { Id = 0, Name = "(None - use Reftab default)" });
-                foreach (var (cid, name) in categories)
-                {
-                    AssetCategories.Add(new CategoryItem { Id = cid, Name = name });
-                }
-
-                CloudConnectionStatus = $"Loaded {categories.Count} categories.";
-            }
-        }
-        catch (Exception ex)
-        {
-            CloudConnectionStatus = $"Category fetch failed: {ex.Message}";
-        }
-    }
-
-    public class CategoryItem
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = string.Empty;
-    }
-
-    public ObservableCollection<LocationItem> Locations { get; } = new();
-
-    private async Task RefreshLocationsAsync()
-    {
-        try
-        {
-            if (ProviderType != "Reftab")
-            {
-                CloudConnectionStatus = "Location discovery not supported for this provider.";
-                return;
-            }
-
-            CloudConnectionStatus = "Fetching locations...";
-
-            var targetConfig = BuildTargetConfig();
-            using var client = CloudClientFactory.CreateClient(targetConfig);
-
-            if (client is ReftabClient reftabClient)
-            {
-                var locations = await reftabClient.GetLocationsAsync();
-
-                Locations.Clear();
-                Locations.Add(new LocationItem { Id = 0, Name = "(None)" });
-                foreach (var (id, name) in locations)
-                {
-                    Locations.Add(new LocationItem { Id = id, Name = name });
-                }
-
-                CloudConnectionStatus = $"Loaded {locations.Count} locations.";
-            }
-        }
-        catch (Exception ex)
-        {
-            CloudConnectionStatus = $"Location fetch failed: {ex.Message}";
-        }
-    }
-
-    public class LocationItem
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = string.Empty;
-    }
-
-    private int _selectedLocationId;
-    public int SelectedLocationId
-    {
-        get => _selectedLocationId;
-        set => SetProperty(ref _selectedLocationId, value);
-    }
-    /// <summary>
-    /// Shows the effective LDAP filter that will be used for assets at sync time.
-    /// </summary>
     public string AssetsEffectiveFilter
     {
         get
@@ -977,9 +1175,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Shows the effective LDAP filter that will be used for users at sync time.
-    /// </summary>
     public string UsersEffectiveFilter
     {
         get
@@ -1003,10 +1198,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Checkbox items for multi-select computer OU picker.</summary>
     public ObservableCollection<SelectableItemViewModel> AssetsOUSelections { get; } = [];
 
-    /// <summary>Gets the list of currently selected asset OU DNs.</summary>
     public List<string> GetSelectedAssetsOUs()
         => AssetsOUSelections.Where(x => x.IsSelected).Select(x => x.Value).ToList();
 
@@ -1015,10 +1208,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         OnPropertyChanged(nameof(AssetsEffectiveFilter));
     }
 
-    /// <summary>Checkbox items for multi-select user OU/Group picker.</summary>
     public ObservableCollection<SelectableItemViewModel> UsersOUSelections { get; } = [];
 
-    /// <summary>Gets the list of currently selected user OU/Group DNs.</summary>
     public List<string> GetSelectedUsersOUs()
         => UsersOUSelections.Where(x => x.IsSelected).Select(x => x.Value).ToList();
 
@@ -1039,15 +1230,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
             item.IsSelected = select;
     }
 
-    /// <summary>
-    /// Rebuilds the checkbox items from the discovered OUs, preserving existing selections.
-    /// Called when the AdSettingsVm.DiscoveredComputerOUs/DiscoveredUserOUs collections change.
-    /// </summary>
     public void RebuildOUSelections(
         IEnumerable<string> computerOUs,
         IEnumerable<string> userOUs)
     {
-        // Use saved config selections on first load, then use current checkbox state
         var previousAssets = AssetsOUSelections.Count > 0
             ? GetSelectedAssetsOUs().ToHashSet(StringComparer.OrdinalIgnoreCase)
             : _savedAssetsOUs.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1074,16 +1260,13 @@ public sealed class CloudTargetViewModel : ViewModelBase
         OnPropertyChanged(nameof(UsersEffectiveFilter));
     }
 
-    /// <summary>Sample AD computer record used for mapping previews.</summary>
-    private Dictionary<string, string>? _sampleComputerRecord;
+    #endregion
 
-    /// <summary>Sample AD user record used for mapping previews.</summary>
+    #region Sample Records & Preview
+
+    private Dictionary<string, string>? _sampleComputerRecord;
     private Dictionary<string, string>? _sampleUserRecord;
 
-    /// <summary>
-    /// Sets sample AD data on all asset mapping rows to enable live preview.
-    /// Call this after AD computer attribute discovery or preview queries.
-    /// </summary>
     public void SetAssetSampleRecord(Dictionary<string, string> sample)
     {
         _sampleComputerRecord = sample;
@@ -1091,10 +1274,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
             mapping.SampleRecord = sample;
     }
 
-    /// <summary>
-    /// Sets sample AD data on all user mapping rows to enable live preview.
-    /// Call this after AD user attribute discovery or preview queries.
-    /// </summary>
     public void SetUserSampleRecord(Dictionary<string, string> sample)
     {
         _sampleUserRecord = sample;
@@ -1109,10 +1288,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         set => SetProperty(ref _testSyncReport, value);
     }
 
-    /// <summary>
-    /// Queries AD for the first computer record using only the mapped attributes,
-    /// then pushes that real data into the Preview column for all asset mappings.
-    /// </summary>
     private async Task PreviewAssetMappingsAsync()
     {
         CloudConnectionStatus = "Fetching first AD computer record for preview...";
@@ -1122,7 +1297,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
             var globalAd = _configService.Current.ActiveDirectory;
             var categoryConfig = Config.Assets;
 
-            // Collect only the attributes referenced by mappings
             var requiredAttrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (!string.IsNullOrEmpty(categoryConfig.AdMatchField))
                 requiredAttrs.Add(categoryConfig.AdMatchField);
@@ -1150,7 +1324,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
             SetAssetSampleRecord(records[0]);
             CloudConnectionStatus = $"Preview loaded from: {records[0].GetValueOrDefault("cn", "(unknown)")}";
-
         }
         catch (Exception ex)
         {
@@ -1158,10 +1331,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Queries AD for the first user record using only the mapped attributes,
-    /// then pushes that real data into the Preview column for all user mappings.
-    /// </summary>
     private async Task PreviewUserMappingsAsync()
     {
         CloudConnectionStatus = "Fetching first AD user record for preview...";
@@ -1205,10 +1374,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Runs the real sync pipeline in dry-run mode to capture the exact JSON payloads,
-    /// then shows a confirmation dialog. If the user clicks Proceed, runs the actual sync.
-    /// </summary>
+    #endregion
+
+    #region Test Sync
+
     private async Task RunLocalTestSyncAsync()
     {
         try
@@ -1318,9 +1487,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Executes the real sync after the user confirms in the preview dialog.
-    /// </summary>
     private async Task ExecuteConfirmedSyncAsync(
         SyncConfig config,
         CloudTargetConfig target,
@@ -1361,6 +1527,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
             CloudConnectionStatus = $"Sync failed: {ex.Message}";
         }
     }
+
+    #endregion
 }
 
 /// <summary>

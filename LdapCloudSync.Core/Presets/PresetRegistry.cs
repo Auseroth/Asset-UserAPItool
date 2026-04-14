@@ -14,6 +14,7 @@ public static class PresetRegistry
     {
         Register(Reftab);
         Register(SnipeIt);
+        Register(AssetPanda);
     }
 
     public static CloudPreset Reftab { get; } = new()
@@ -239,6 +240,38 @@ public static class PresetRegistry
                     DefaultValue = null
                 }
             ]
+        }
+    };
+
+    public static CloudPreset AssetPanda { get; } = new()
+    {
+        Name = "Asset Panda",
+        ProviderType = "AssetPanda",
+        BaseUrl = "https://api.assetpanda.app",
+        AuthType = AuthType.ApiKey,
+        ContentType = "application/json",
+        Assets = new PresetEndpoints
+        {
+            // Endpoints are dynamic — built from Account + Module + Collection IDs at runtime
+            GetEndpoint = "",
+            PostEndpoint = "",
+            PutEndpoint = "",
+            ResponseItemsPath = "$.data",
+            CloudIdField = "id",
+            AdMatchField = "cn",
+            CloudMatchField = "",
+            DefaultMappings = []
+        },
+        Users = new PresetEndpoints
+        {
+            GetEndpoint = "",
+            PostEndpoint = "",
+            PutEndpoint = "",
+            ResponseItemsPath = "$.data",
+            CloudIdField = "id",
+            AdMatchField = "displayName",
+            CloudMatchField = "",
+            DefaultMappings = []
         }
     };
 

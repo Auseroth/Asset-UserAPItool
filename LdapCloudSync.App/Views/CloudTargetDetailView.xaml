@@ -210,50 +210,93 @@
                     </StackPanel>
                 </Border>
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                <!-- Asset Panda Asset Settings (Collection + Columns) - only visible for AssetPanda -->
+                <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,8" Margin="0,4,0,4"
+                        Visibility="{Binding ShowApAssetSettings, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Asset Panda Asset Settings" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="GET Endpoint" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding AssetsGetEndpoint, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="POST Endpoint" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding AssetsPostEndpoint, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="4">
-                        <TextBlock Text="PUT Endpoint ({id})" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding AssetsPutEndpoint, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                </Grid>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Collection (Assets)" Style="{StaticResource FieldLabel}" />
+                                <ComboBox ItemsSource="{Binding ApAssetsCollections}"
+                                          DisplayMemberPath="Name"
+                                          SelectedValuePath="Id"
+                                          SelectedValue="{Binding ApAssetsCollectionId, Mode=TwoWay}" />
+                            </StackPanel>
 
-                <Grid Margin="0,4,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                                <Button Content="Refresh"
+                                        Command="{Binding RefreshApAssetsCollectionsCommand}"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Padding="8,4" FontSize="11" Margin="0,0,4,0" />
+                                <Button Content="Load Columns"
+                                        Command="{Binding RefreshApAssetColumnsCommand}"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Padding="8,4" FontSize="11"
+                                        ToolTip="Fetches column definitions from the selected collection to populate Cloud Fields" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Response Items Path" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding AssetsResponsePath, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="AD Match Field" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding AssetsAdMatchField, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="4">
-                        <TextBlock Text="Cloud Match Field" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding AssetsCloudMatchField, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
+                <!-- Generic Endpoints (hidden for Asset Panda) -->
+                <Grid Visibility="{Binding HideGenericEndpoints, Converter={StaticResource InverseBoolToVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition />
+                        <RowDefinition />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="GET Endpoint" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AssetsGetEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="POST Endpoint" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AssetsPostEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Text="PUT Endpoint ({id})" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AssetsPutEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Response Items Path" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AssetsResponsePath, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="AD Match Field" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AssetsAdMatchField, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Text="Cloud Match Field" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AssetsCloudMatchField, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <!-- Asset Field Mapping -->
@@ -378,50 +421,93 @@
                             ToolTip="Re-discover OUs from Active Directory (use after changing AD settings)" />
                 </Grid>
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                <!-- Asset Panda People Settings (Collection + Columns) - only visible for AssetPanda -->
+                <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,8" Margin="0,4,0,4"
+                        Visibility="{Binding ShowApUserSettings, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Asset Panda People Settings" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="GET Endpoint" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding UsersGetEndpoint, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="POST Endpoint" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding UsersPostEndpoint, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="4">
-                        <TextBlock Text="PUT Endpoint ({id})" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding UsersPutEndpoint, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                </Grid>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Collection (People)" Style="{StaticResource FieldLabel}" />
+                                <ComboBox ItemsSource="{Binding ApUsersCollections}"
+                                          DisplayMemberPath="Name"
+                                          SelectedValuePath="Id"
+                                          SelectedValue="{Binding ApUsersCollectionId, Mode=TwoWay}" />
+                            </StackPanel>
 
-                <Grid Margin="0,4,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="8" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                                <Button Content="Refresh"
+                                        Command="{Binding RefreshApUsersCollectionsCommand}"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Padding="8,4" FontSize="11" Margin="0,0,4,0" />
+                                <Button Content="Load Columns"
+                                        Command="{Binding RefreshApUserColumnsCommand}"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Padding="8,4" FontSize="11"
+                                        ToolTip="Fetches column definitions from the selected collection to populate Cloud Fields" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Response Items Path" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding UsersResponsePath, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="AD Match Field" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding UsersAdMatchField, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="4">
-                        <TextBlock Text="Cloud Match Field" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding UsersCloudMatchField, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
+                <!-- Generic Endpoints (hidden for Asset Panda) -->
+                <Grid Visibility="{Binding HideGenericEndpoints, Converter={StaticResource InverseBoolToVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition />
+                        <RowDefinition />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="GET Endpoint" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding UsersGetEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="POST Endpoint" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding UsersPostEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Text="PUT Endpoint ({id})" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding UsersPutEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Response Items Path" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding UsersResponsePath, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="AD Match Field" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding UsersAdMatchField, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Text="Cloud Match Field" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding UsersCloudMatchField, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <!-- User Field Mapping -->

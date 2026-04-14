@@ -10,6 +10,7 @@
             </ResourceDictionary.MergedDictionaries>
 
             <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
             <converters:EnumBoolConverter x:Key="EnumBoolConverter" />
             <converters:EnumToVisibilityConverter x:Key="EnumToVis" />
             <converters:CountToVisibilityConverter x:Key="CountToVis" />

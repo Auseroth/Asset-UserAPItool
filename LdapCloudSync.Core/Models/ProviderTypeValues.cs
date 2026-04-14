@@ -8,6 +8,7 @@ public static class ProviderTypeValues
     public static string[] All { get; } =
     [
         "Reftab",
+        "AssetPanda",
         "SnipeIT",
         "Generic (Standard REST)"
     ];
