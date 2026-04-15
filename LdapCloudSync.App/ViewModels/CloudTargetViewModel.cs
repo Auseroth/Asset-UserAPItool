@@ -245,6 +245,21 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
     }
 
+    // Update match fields for PUT fallback (user-configurable)
+    private string _assetsUpdateMatchAdField = string.Empty;
+    public string AssetsUpdateMatchAdField
+    {
+        get => _assetsUpdateMatchAdField;
+        set => SetProperty(ref _assetsUpdateMatchAdField, value);
+    }
+
+    private string _assetsUpdateMatchCloudField = string.Empty;
+    public string AssetsUpdateMatchCloudField
+    {
+        get => _assetsUpdateMatchCloudField;
+        set => SetProperty(ref _assetsUpdateMatchCloudField, value);
+    }
+
     #endregion
 
     #region Users Config
@@ -336,6 +351,21 @@ public sealed class CloudTargetViewModel : ViewModelBase
             if (SetProperty(ref _usersAdSourceIsGroup, value))
                 OnPropertyChanged(nameof(UsersEffectiveFilter));
         }
+    }
+
+    // Update match fields for PUT fallback (user-configurable)
+    private string _usersUpdateMatchAdField = string.Empty;
+    public string UsersUpdateMatchAdField
+    {
+        get => _usersUpdateMatchAdField;
+        set => SetProperty(ref _usersUpdateMatchAdField, value);
+    }
+
+    private string _usersUpdateMatchCloudField = string.Empty;
+    public string UsersUpdateMatchCloudField
+    {
+        get => _usersUpdateMatchCloudField;
+        set => SetProperty(ref _usersUpdateMatchCloudField, value);
     }
 
     #endregion
@@ -1068,6 +1098,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
         _savedAssetsOUs = Config.Assets.AdSearchBaseOverrides;
         AssetsAdFilterOverride = Config.Assets.AdFilterOverride;
 
+        // Update match fields for PUT fallback
+        AssetsUpdateMatchAdField = Config.Assets.UpdateMatchAdField;
+        AssetsUpdateMatchCloudField = Config.Assets.UpdateMatchCloudField;
+
         AssetMappings.Clear();
         foreach (var m in Config.Assets.FieldMappings)
             AssetMappings.Add(new FieldMappingViewModel(m));
@@ -1084,6 +1118,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
         _savedUsersOUs = Config.Users.AdSearchBaseOverrides;
         UsersAdFilterOverride = Config.Users.AdFilterOverride;
         UsersAdSourceIsGroup = Config.Users.AdSourceIsGroup;
+
+        // Update match fields for PUT fallback
+        UsersUpdateMatchAdField = Config.Users.UpdateMatchAdField;
+        UsersUpdateMatchCloudField = Config.Users.UpdateMatchCloudField;
 
         UserMappings.Clear();
         foreach (var m in Config.Users.FieldMappings)

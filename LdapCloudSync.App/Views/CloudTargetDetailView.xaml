@@ -347,6 +347,37 @@
                         </StackPanel>
                     </Grid>
                 </Grid>
+                <!-- Update Match Fields for PUT fallback -->
+                <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Update: Fields to Match" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"
+                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates. The AD field value is compared against the Cloud field in the GET response." />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="30" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="AD Field" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding AssetsUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredAdComputerAttributes}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="AD attribute to match (e.g., cn)" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                       Margin="0,0,0,6" FontWeight="Bold" FontSize="14" />
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Cloud Field" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding AssetsUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredAssetCloudFields}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="Cloud field to compare against (e.g., title, name)" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <!-- Asset Field Mapping -->
                 <TextBlock Text="Field Mappings" FontWeight="SemiBold" Margin="0,12,0,4" />
@@ -558,6 +589,38 @@
                         </StackPanel>
                     </Grid>
                 </Grid>
+
+                <!-- Update Match Fields for PUT fallback -->
+                <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Update: Fields to Match" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"
+                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates. The AD field value is compared against the Cloud field in the GET response." />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="30" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="AD Field" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding UsersUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredAdUserAttributes}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="AD attribute to match (e.g., mail)" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                       Margin="0,0,0,6" FontWeight="Bold" FontSize="14" />
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Cloud Field" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding UsersUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredUserCloudFields}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="Cloud field to compare against (e.g., email, name)" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <!-- User Field Mapping -->
                 <TextBlock Text="Field Mappings" FontWeight="SemiBold" Margin="0,12,0,4" />

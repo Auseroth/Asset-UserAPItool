@@ -150,6 +150,18 @@ public sealed class SyncCategoryConfig
     public string CloudMatchField { get; set; } = string.Empty;
 
     /// <summary>
+    /// AD attribute used for PUT fallback matching — compared against
+    /// UpdateMatchCloudField in existing cloud records to resolve the record ID for updates.
+    /// </summary>
+    public string UpdateMatchAdField { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Cloud field used for PUT fallback matching — the field in existing cloud records
+    /// whose value is compared against the AD record's UpdateMatchAdField.
+    /// </summary>
+    public string UpdateMatchCloudField { get; set; } = string.Empty;
+
+    /// <summary>
     /// Field mappings: AD attribute -> Cloud field, with optional transform.
     /// </summary>
     public List<FieldMapping> FieldMappings { get; set; } = [];

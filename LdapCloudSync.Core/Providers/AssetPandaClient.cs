@@ -20,8 +20,9 @@ namespace LdapCloudSync.Core.Providers;
 /// - "GET" existing records uses POST /collection-records/search with a body.
 /// - POST/PUT both go to /collection-records with a batch body containing tenant info.
 /// - PUT records require "recordId" (not "id") in the payload.
-/// - Column displayName  columnId mapping is required for field mapping UI.
+/// - Column displayName -> columnId mapping is required for field mapping UI.
 /// - Local JSON cache in ProgramData enables change detection without API calls.
+/// - Failed POSTs are retried as PUTs (handles records that already exist).
 /// </summary>
 public sealed class AssetPandaClient : BaseCloudClient
 {
@@ -109,9 +110,9 @@ public sealed class AssetPandaClient : BaseCloudClient
         }
 
         var fieldNames = columns.Select(c => c.DisplayName).ToList();
-        var rawJson = System.Text.Json.JsonSerializer.Serialize(
+        var rawJson = JsonSerializer.Serialize(
             columns.Select(c => new { c.Id, c.DisplayName }),
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            new JsonSerializerOptions { WriteIndented = true });
 
         return (fieldNames, rawJson);
     }
@@ -448,11 +449,6 @@ public sealed class AssetPandaClient : BaseCloudClient
         var toCreate = new List<Dictionary<string, object>>();
         var toUpdate = new List<Dictionary<string, object>>();
 
-        // Resolve match field: displayName -> columnId
-        var matchColumnId = _columnNameToId.TryGetValue(categoryConfig.CloudMatchField, out var colId)
-            ? colId
-            : categoryConfig.CloudMatchField;
-
         foreach (var record in records)
         {
             try
@@ -535,13 +531,16 @@ public sealed class AssetPandaClient : BaseCloudClient
     /// Sends a batch of records to POST /collection-records or PUT /collection-records.
     /// POST body: { tenant, collectionId, records: [{ columnId: value }] }
     /// PUT body:  { tenant, collectionId, records: [{ recordId: "...", columnId: value }] }
+    /// Returns per-record success/failure counts and the list of failed records for retry.
     /// </summary>
-    private async Task<(int Succeeded, int Failed, List<string> Errors)> SendCollectionRecordsBatchAsync(
-        HttpMethod method,
-        string collectionId,
-        List<Dictionary<string, object>> records)
+    private async Task<(int Succeeded, int Failed, List<string> Errors, List<Dictionary<string, object>> FailedRecords)>
+        SendCollectionRecordsBatchAsync(
+            HttpMethod method,
+            string collectionId,
+            List<Dictionary<string, object>> records)
     {
         var errors = new List<string>();
+        var failedRecords = new List<Dictionary<string, object>>();
         var succeeded = 0;
         var failed = 0;
 
@@ -553,8 +552,6 @@ public sealed class AssetPandaClient : BaseCloudClient
                 var obj = new JsonObject();
                 foreach (var kvp in record)
                 {
-                    // Serialize through JsonSerializer to produce a proper JsonNode
-                    // that doesn't require a TypeInfoResolver at write time.
                     obj[kvp.Key] = kvp.Value switch
                     {
                         null => null,
@@ -593,7 +590,7 @@ public sealed class AssetPandaClient : BaseCloudClient
                     Endpoint = "/collection-records",
                     JsonBody = body.ToJsonString(new JsonSerializerOptions { WriteIndented = true })
                 });
-                return (records.Count, 0, []);
+                return (records.Count, 0, [], []);
             }
 
             var request = BuildRequest(method, "/collection-records");
@@ -609,7 +606,10 @@ public sealed class AssetPandaClient : BaseCloudClient
             {
                 _log.Error("AP {Method} failed: {StatusCode} — {Body}",
                     method.Method, (int)response.StatusCode, Truncate(responseJson, 1000));
-                return (0, records.Count, [$"{method.Method} failed: HTTP {(int)response.StatusCode}"]);
+                // All records failed — return them all for potential retry
+                return (0, records.Count,
+                    [$"{method.Method} failed: HTTP {(int)response.StatusCode}"],
+                    new List<Dictionary<string, object>>(records));
             }
 
             // Parse response to count successes/failures per record
@@ -618,8 +618,9 @@ public sealed class AssetPandaClient : BaseCloudClient
 
             if (dataRecords is not null)
             {
-                foreach (var item in dataRecords)
+                for (int i = 0; i < dataRecords.Count; i++)
                 {
+                    var item = dataRecords[i];
                     if (item is null) continue;
 
                     var success = item["success"]?.GetValue<bool>() ?? false;
@@ -630,6 +631,10 @@ public sealed class AssetPandaClient : BaseCloudClient
                     else
                     {
                         failed++;
+                        // Track the original record so it can be retried
+                        if (i < records.Count)
+                            failedRecords.Add(records[i]);
+
                         var recordErrors = AsArraySafe(item["errors"]);
                         if (recordErrors is not null && recordErrors.Count > 0)
                         {
@@ -652,10 +657,10 @@ public sealed class AssetPandaClient : BaseCloudClient
         catch (Exception ex)
         {
             _log.Error(ex, "AP: Batch {Method} failed", method.Method);
-            return (0, records.Count, [ex.Message]);
+            return (0, records.Count, [ex.Message], new List<Dictionary<string, object>>(records));
         }
 
-        return (succeeded, failed, errors);
+        return (succeeded, failed, errors, failedRecords);
     }
 
     //  Fetch Override 
@@ -710,10 +715,10 @@ public sealed class AssetPandaClient : BaseCloudClient
             if (root is JsonArray arr)
                 items = arr;
             else if (root is JsonObject obj)
-                items = obj["data"]?["records"]?.AsArray()
-                     ?? obj["items"]?.AsArray()
-                     ?? obj["results"]?.AsArray()
-                     ?? obj["records"]?.AsArray();
+                items = AsArraySafe(obj["data"]?["records"])
+                     ?? AsArraySafe(obj["items"])
+                     ?? AsArraySafe(obj["results"])
+                     ?? AsArraySafe(obj["records"]);
 
             if (items is null)
             {
@@ -773,7 +778,7 @@ public sealed class AssetPandaClient : BaseCloudClient
     }
 
     /// <summary>
-    /// Asset Panda record matching  resolves displayName to columnId for comparison.
+    /// Asset Panda record matching — resolves displayName to columnId for comparison.
     /// </summary>
     protected override string? FindExistingRecordId(
         List<JsonObject> existingRecords,
@@ -818,6 +823,7 @@ public sealed class AssetPandaClient : BaseCloudClient
             return _target.ApUsersCollectionId;
         return _target.ApAssetsCollectionId;
     }
+
     /// <summary>
     /// Safely attempts to interpret a JsonNode as a JsonArray.
     /// Returns null if the node is null or not actually an array,
@@ -835,14 +841,14 @@ public sealed class AssetPandaClient : BaseCloudClient
 
         if (root is JsonObject obj)
         {
-            return obj["data"]?.AsArray()
-                ?? obj["items"]?.AsArray()
-                ?? obj["results"]?.AsArray()
-                ?? obj["collections"]?.AsArray()
-                ?? obj["modules"]?.AsArray()
-                ?? obj["accounts"]?.AsArray()
-                ?? obj["columns"]?.AsArray()
-                ?? obj["records"]?.AsArray();
+            return AsArraySafe(obj["data"])
+                ?? AsArraySafe(obj["items"])
+                ?? AsArraySafe(obj["results"])
+                ?? AsArraySafe(obj["collections"])
+                ?? AsArraySafe(obj["modules"])
+                ?? AsArraySafe(obj["accounts"])
+                ?? AsArraySafe(obj["columns"])
+                ?? AsArraySafe(obj["records"]);
         }
 
         _log.Warning("AP: Response was neither array nor object. Raw length: {Length}", json.Length);

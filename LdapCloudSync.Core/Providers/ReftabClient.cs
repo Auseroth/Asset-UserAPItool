@@ -421,7 +421,7 @@ public sealed class ReftabClient : BaseCloudClient
 
     /// <summary>
     /// Recursively flattens the Reftab location tree.
-    /// Indents child names with "—" prefixes to show hierarchy.
+    /// Indents child names with "->" prefixes to show hierarchy.
     /// </summary>
     private static void FlattenLocations(JsonArray items, List<(int Id, string Name)> result, int depth)
     {
@@ -441,7 +441,7 @@ public sealed class ReftabClient : BaseCloudClient
             if (id > 0 && !string.IsNullOrEmpty(name))
             {
                 // Indent child locations for readability in the dropdown
-                var prefix = depth > 0 ? new string('—', depth) + " " : "";
+                var prefix = depth > 0 ? string.Concat(Enumerable.Repeat("-> ", depth)) : "";
                 result.Add((id, $"{prefix}{name}"));
             }
 

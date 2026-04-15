@@ -31,9 +31,11 @@ public static class PresetRegistry
             PostEndpoint = "/assets",
             PutEndpoint = "/assets/{id}",
             ResponseItemsPath = "$",
-            CloudIdField = "id",
+            CloudIdField = "aid",
             AdMatchField = "cn",
             CloudMatchField = "title",
+            UpdateMatchAdField = "cn",
+            UpdateMatchCloudField = "title",
             DefaultMappings =
             [
                 // Top-level Reftab asset fields
@@ -91,9 +93,10 @@ public static class PresetRegistry
             CloudIdField = "lnid",
             AdMatchField = "mail",
             CloudMatchField = "email",
+            UpdateMatchAdField = "mail",
+            UpdateMatchCloudField = "email",
             DefaultMappings =
             [
-                // Required Reftab loanee fields in order
                 new FieldMapping
                 {
                     CloudField = "name",
@@ -122,9 +125,6 @@ public static class PresetRegistry
                     TransformExpression = null,
                     DefaultValue = null
                 }
-                // "disabled" is auto-injected as false by ReftabClient.PreparePushRecord
-                // "details" is auto-injected as {} by ReftabClient.PreparePushRecord
-                // Additional custom fields can be mapped as "details.FieldName"
             ]
         }
     };
@@ -147,6 +147,8 @@ public static class PresetRegistry
             CloudIdField = "id",
             AdMatchField = "cn",
             CloudMatchField = "name",
+            UpdateMatchAdField = "cn",
+            UpdateMatchCloudField = "name",
             DefaultMappings =
             [
                 new FieldMapping
@@ -188,6 +190,8 @@ public static class PresetRegistry
             CloudIdField = "id",
             AdMatchField = "sAMAccountName",
             CloudMatchField = "username",
+            UpdateMatchAdField = "sAMAccountName",
+            UpdateMatchCloudField = "username",
             DefaultMappings =
             [
                 new FieldMapping
@@ -260,6 +264,8 @@ public static class PresetRegistry
             CloudIdField = "id",
             AdMatchField = "cn",
             CloudMatchField = "",
+            UpdateMatchAdField = "cn",
+            UpdateMatchCloudField = "",
             DefaultMappings = []
         },
         Users = new PresetEndpoints
@@ -271,6 +277,8 @@ public static class PresetRegistry
             CloudIdField = "id",
             AdMatchField = "displayName",
             CloudMatchField = "",
+            UpdateMatchAdField = "displayName",
+            UpdateMatchCloudField = "",
             DefaultMappings = []
         }
     };
@@ -311,6 +319,8 @@ public static class PresetRegistry
                 CloudIdField = preset.Assets.CloudIdField,
                 AdMatchField = preset.Assets.AdMatchField,
                 CloudMatchField = preset.Assets.CloudMatchField,
+                UpdateMatchAdField = preset.Assets.UpdateMatchAdField,
+                UpdateMatchCloudField = preset.Assets.UpdateMatchCloudField,
                 FieldMappings = preset.Assets.DefaultMappings
                     .Select(m => new FieldMapping
                     {
@@ -330,6 +340,8 @@ public static class PresetRegistry
                 CloudIdField = preset.Users.CloudIdField,
                 AdMatchField = preset.Users.AdMatchField,
                 CloudMatchField = preset.Users.CloudMatchField,
+                UpdateMatchAdField = preset.Users.UpdateMatchAdField,
+                UpdateMatchCloudField = preset.Users.UpdateMatchCloudField,
                 FieldMappings = preset.Users.DefaultMappings
                     .Select(m => new FieldMapping
                     {

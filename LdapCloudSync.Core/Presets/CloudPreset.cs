@@ -58,6 +58,16 @@ public sealed class PresetEndpoints
     public string CloudMatchField { get; init; } = string.Empty;
 
     /// <summary>
+    /// Default AD attribute for PUT fallback matching.
+    /// </summary>
+    public string UpdateMatchAdField { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Default cloud field for PUT fallback matching.
+    /// </summary>
+    public string UpdateMatchCloudField { get; init; } = string.Empty;
+
+    /// <summary>
     /// Default field mappings pre-populated for this preset.
     /// </summary>
     public List<FieldMapping> DefaultMappings { get; init; } = [];
