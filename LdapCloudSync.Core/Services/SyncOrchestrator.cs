@@ -162,7 +162,7 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
 
     /// <summary>
     /// Collects all unique AD attribute names needed by the field mappings,
-    /// including the AD match field.
+    /// including the AD match field and the update match field.
     /// </summary>
     private static List<string> GetRequiredAdAttributes(SyncCategoryConfig categoryConfig)
     {
@@ -171,6 +171,10 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
         // Always need the match field
         if (!string.IsNullOrEmpty(categoryConfig.AdMatchField))
             attributes.Add(categoryConfig.AdMatchField);
+
+        // Also need the update match field for PUT fallback
+        if (!string.IsNullOrEmpty(categoryConfig.UpdateMatchAdField))
+            attributes.Add(categoryConfig.UpdateMatchAdField);
 
         foreach (var mapping in categoryConfig.FieldMappings)
         {

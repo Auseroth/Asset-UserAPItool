@@ -241,11 +241,31 @@ public sealed class ActiveDirectoryProvider : IDirectoryProvider, IDisposable
         return value switch
         {
             byte[] bytes when bytes.Length == 16 => new Guid(bytes).ToString(),
+            byte[] bytes when TryConvertSid(bytes, out var sid) => sid,
             byte[] bytes => Convert.ToBase64String(bytes),
             DateTime dt => dt.ToString("o"),
             long fileTime when fileTime > 0 => TryConvertFileTime(fileTime),
             _ => value.ToString() ?? string.Empty
         };
+    }
+
+    /// <summary>
+    /// Attempts to convert a byte array to a SID string (e.g. S-1-5-21-...).
+    /// Returns true if the bytes represent a valid SID.
+    /// </summary>
+    private static bool TryConvertSid(byte[] bytes, out string sid)
+    {
+        try
+        {
+            var secId = new System.Security.Principal.SecurityIdentifier(bytes, 0);
+            sid = secId.ToString();
+            return true;
+        }
+        catch
+        {
+            sid = string.Empty;
+            return false;
+        }
     }
 
     private static string TryConvertFileTime(long fileTime)

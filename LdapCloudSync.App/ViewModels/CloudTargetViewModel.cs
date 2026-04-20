@@ -1287,6 +1287,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Assets.TargetLocationId = SelectedLocationId;
         Config.Assets.AdSearchBaseOverrides = GetSelectedAssetsOUs();
         Config.Assets.AdFilterOverride = AssetsAdFilterOverride;
+        Config.Assets.UpdateMatchAdField = AssetsUpdateMatchAdField;
+        Config.Assets.UpdateMatchCloudField = AssetsUpdateMatchCloudField;
 
         Config.Users.Enabled = UsersEnabled;
         Config.Users.GetEndpoint = UsersGetEndpoint;
@@ -1300,6 +1302,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Users.AdSearchBaseOverrides = GetSelectedUsersOUs();
         Config.Users.AdFilterOverride = UsersAdFilterOverride;
         Config.Users.AdSourceIsGroup = UsersAdSourceIsGroup;
+        Config.Users.UpdateMatchAdField = UsersUpdateMatchAdField;
+        Config.Users.UpdateMatchCloudField = UsersUpdateMatchCloudField;
 
         Config.Schedule.CoupledSchedule = CoupledSchedule;
         Config.Schedule.PrimarySchedule.Type = PrimaryScheduleType;

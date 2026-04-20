@@ -351,73 +351,7 @@ public sealed class ReftabClient : BaseCloudClient
     /// 1. Match on email — if the email already exists in Reftab, return the lnid for PUT
     /// 2. If the push record has no email (service accounts), fall back to matching on name
     /// Always returns the lnid (integer) since that's what Reftab's PUT /loanees/{lnid} requires.
-    /// </summary>
-    protected override string? FindExistingRecordId(
-        List<JsonObject> existingRecords,
-        SyncCategoryConfig categoryConfig,
-        Dictionary<string, object> pushRecord)
-    {
-        var isLoanee = categoryConfig.PostEndpoint.Contains("/loanees", StringComparison.OrdinalIgnoreCase);
-        if (!isLoanee)
-            return base.FindExistingRecordId(existingRecords, categoryConfig, pushRecord);
-
-        // 1. Primary match: email -> return lnid
-        var email = pushRecord.TryGetValue("email", out var emailVal)
-            ? emailVal?.ToString() ?? string.Empty
-            : string.Empty;
-
-        if (!string.IsNullOrEmpty(email))
-        {
-            var id = FindLoaneeIdByField(existingRecords, "email", email);
-            if (id is not null)
-                return id;
-        }
-
-        // 2. Fallback match: name -> return lnid
-        var name = pushRecord.TryGetValue("name", out var nameVal)
-            ? nameVal?.ToString() ?? string.Empty
-            : string.Empty;
-
-        if (!string.IsNullOrEmpty(name))
-        {
-            var id = FindLoaneeIdByField(existingRecords, "name", name);
-            if (id is not null)
-            {
-                _log.Information("Loanee matched by name fallback: '{Name}' -> lnid={Id}", name, id);
-                return id;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Matches a loanee by the given field, always returning the lnid (integer) for PUT /loanees/{lnid}.
-    /// </summary>
-    private string? FindLoaneeIdByField(List<JsonObject> records, string fieldName, string fieldValue)
-    {
-        foreach (var record in records)
-        {
-            if (record.TryGetPropertyValue(fieldName, out var val)
-                && string.Equals(val?.ToString(), fieldValue, StringComparison.OrdinalIgnoreCase))
-            {
-                // lnid is an integer per Reftab API docs
-                var lnidNode = record["lnid"];
-                if (lnidNode is not null)
-                {
-                    var lnid = lnidNode.GetValue<int>().ToString();
-                    _log.Information("FindLoaneeIdByField: matched {Field}='{Value}' -> lnid={Id}",
-                        fieldName, fieldValue, lnid);
-                    return lnid;
-                }
-
-                var keys = string.Join(", ", record.Select(p => p.Key));
-                _log.Warning("FindLoaneeIdByField: matched {Field}='{Value}' but 'lnid' not found. Keys: [{Keys}]",
-                    fieldName, fieldValue, keys);
-            }
-        }
-        return null;
-    }
+    
 
     /// <summary>
     /// Recursively flattens the Reftab location tree.

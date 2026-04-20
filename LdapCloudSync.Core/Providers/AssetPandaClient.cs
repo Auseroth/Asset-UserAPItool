@@ -402,6 +402,7 @@ public sealed class AssetPandaClient : BaseCloudClient
     /// 2. POST/PUT use /collection-records with a batch body (not per-record endpoints).
     /// 3. PUT requires "recordId" (not "id") in each record.
     /// 4. Local cache enables change detection — only push records that actually changed.
+    /// 5. Failed POSTs are retried as PUTs using UpdateMatch fields.
     /// </summary>
     public override async Task<SyncResult> PushRecordsAsync(
         string category,
@@ -427,58 +428,24 @@ public sealed class AssetPandaClient : BaseCloudClient
             await GetCollectionColumnsAsync(_target.ApAccountId, _target.ApModuleId, collectionId);
         }
 
-        // Step 2: Fetch existing records from AP and update local cache
         var categoryConfig = category.Equals("assets", StringComparison.OrdinalIgnoreCase)
             ? _target.Assets
             : _target.Users;
 
-        var existingRecords = DryRunMode
-            ? []
-            : await FetchExistingRecordsAsync(categoryConfig);
+        // Resolve update match: which cloud key (post-translation) holds the AD match value
+        var updateMatchCloudKey = ResolveUpdateMatchCloudKeyAp(categoryConfig);
+        var hasUpdateMatch = !string.IsNullOrEmpty(updateMatchCloudKey)
+                          && !string.IsNullOrEmpty(categoryConfig.UpdateMatchCloudField);
 
-        _log.Information("AP: Fetched {Count} existing {Category} records for matching",
-            existingRecords.Count, category);
-
-        // Save fetched records to local cache for change detection
-        if (!DryRunMode && existingRecords.Count > 0)
-        {
-            _recordCache.SaveRecords(collectionId, existingRecords);
-        }
-
-        // Step 3: Classify records into creates, updates, or skips
+        // Step 2: Prepare all records for POST
         var toCreate = new List<Dictionary<string, object>>();
-        var toUpdate = new List<Dictionary<string, object>>();
 
         foreach (var record in records)
         {
             try
             {
                 PreparePushRecord(categoryConfig, record);
-
-                var existingId = FindExistingRecordId(existingRecords, categoryConfig, record);
-
-                if (existingId is not null)
-                {
-                    // Check if anything actually changed vs cached version
-                    var cachedRecord = existingRecords
-                        .FirstOrDefault(r => r["id"]?.GetValue<string>() == existingId);
-
-                    if (cachedRecord is not null && !_recordCache.HasRecordChanged(cachedRecord, record))
-                    {
-                        result.Skipped++;
-                        _log.Debug("AP: Record {Id} unchanged — skipping", existingId);
-                        continue;
-                    }
-
-                    // PUT requires "recordId" not "id"
-                    record.Remove("id");
-                    record["recordId"] = existingId;
-                    toUpdate.Add(record);
-                }
-                else
-                {
-                    toCreate.Add(record);
-                }
+                toCreate.Add(record);
             }
             catch (Exception ex)
             {
@@ -488,10 +455,9 @@ public sealed class AssetPandaClient : BaseCloudClient
             }
         }
 
-        _log.Information("AP: {Create} to create, {Update} to update, {Skip} unchanged",
-            toCreate.Count, toUpdate.Count, result.Skipped);
+        _log.Information("AP: {Count} records prepared for POST", toCreate.Count);
 
-        // Step 4: POST new records in batch
+        // Step 3: POST all records in batch
         if (toCreate.Count > 0)
         {
             var createResult = await SendCollectionRecordsBatchAsync(
@@ -499,19 +465,87 @@ public sealed class AssetPandaClient : BaseCloudClient
             result.Created += createResult.Succeeded;
             result.Failed += createResult.Failed;
             result.Errors.AddRange(createResult.Errors);
+
+            // Step 4: Retry failed POSTs as PUTs using UpdateMatch fields
+            if (createResult.FailedRecords.Count > 0 && hasUpdateMatch)
+            {
+                _log.Information("AP: Retrying {Count} failed POST(s) as PUT using UpdateMatch fields",
+                    createResult.FailedRecords.Count);
+
+                // Fresh fetch of existing records
+                var existingRecords = await FetchExistingRecordsAsync(categoryConfig);
+                _log.Information("AP: Fetched {Count} existing records for PUT retry matching",
+                    existingRecords.Count);
+
+                // Resolve the match column ID (displayName -> columnId)
+                var matchColumnId = _columnNameToId.TryGetValue(categoryConfig.UpdateMatchCloudField, out var colId)
+                    ? colId
+                    : categoryConfig.UpdateMatchCloudField;
+
+                var retryAsUpdate = new List<Dictionary<string, object>>();
+
+                foreach (var failedRecord in createResult.FailedRecords)
+                {
+                    // Get the match value from the record (already translated to columnId keys)
+                    var translatedKey = _columnNameToId.TryGetValue(updateMatchCloudKey!, out var transColId)
+                        ? transColId
+                        : updateMatchCloudKey!;
+
+                    var matchValue = failedRecord.TryGetValue(translatedKey, out var mv)
+                        ? mv?.ToString() ?? string.Empty
+                        : string.Empty;
+
+                    if (string.IsNullOrEmpty(matchValue))
+                    {
+                        _log.Warning("AP: PUT retry skipped — match field '{Field}' is empty in record", updateMatchCloudKey);
+                        continue;
+                    }
+
+                    // Search existing records for a match
+                    string? existingId = null;
+                    foreach (var existing in existingRecords)
+                    {
+                        if (existing.TryGetPropertyValue(matchColumnId, out var cloudVal)
+                            && string.Equals(cloudVal?.ToString(), matchValue, StringComparison.OrdinalIgnoreCase))
+                        {
+                            existingId = existing["id"]?.GetValue<string>();
+                            break;
+                        }
+                    }
+
+                    if (existingId is not null)
+                    {
+                        failedRecord.Remove("id");
+                        failedRecord["recordId"] = existingId;
+                        retryAsUpdate.Add(failedRecord);
+                        _log.Information("AP: PUT retry matched {Field}='{Value}' -> id='{Id}'",
+                            categoryConfig.UpdateMatchCloudField, matchValue, existingId);
+                    }
+                    else
+                    {
+                        _log.Warning("AP: PUT retry — no match found for {Field}='{Value}'",
+                            categoryConfig.UpdateMatchCloudField, matchValue);
+                    }
+                }
+
+                if (retryAsUpdate.Count > 0)
+                {
+                    var retryResult = await SendCollectionRecordsBatchAsync(
+                        HttpMethod.Put, collectionId, retryAsUpdate);
+
+                    // Reclassify: move from Failed to Updated
+                    result.Failed -= retryResult.Succeeded;
+                    result.Updated += retryResult.Succeeded;
+                    result.Failed += retryResult.Failed;
+                    result.Errors.AddRange(retryResult.Errors);
+
+                    _log.Information("AP: PUT retry: {Succeeded} succeeded, {Failed} still failed",
+                        retryResult.Succeeded, retryResult.Failed);
+                }
+            }
         }
 
-        // Step 5: PUT updated records in batch
-        if (toUpdate.Count > 0)
-        {
-            var updateResult = await SendCollectionRecordsBatchAsync(
-                HttpMethod.Put, collectionId, toUpdate);
-            result.Updated += updateResult.Succeeded;
-            result.Failed += updateResult.Failed;
-            result.Errors.AddRange(updateResult.Errors);
-        }
-
-        // Step 6: Refresh local cache after successful push
+        // Step 5: Refresh local cache after successful push
         if (!DryRunMode && (result.Created > 0 || result.Updated > 0))
         {
             _log.Information("AP: Refreshing local cache after push");
@@ -777,24 +811,32 @@ public sealed class AssetPandaClient : BaseCloudClient
             record[kvp.Key] = kvp.Value;
     }
 
+   
     /// <summary>
-    /// Asset Panda record matching — resolves displayName to columnId for comparison.
+    /// AP-specific: resolves UpdateMatchAdField -> cloud field key, accounting for
+    /// column name -> columnId translation that PreparePushRecord applies.
     /// </summary>
-    protected override string? FindExistingRecordId(
+    private string? ResolveUpdateMatchCloudKeyAp(SyncCategoryConfig categoryConfig)
+    {
+        // First resolve AD field -> cloud field via mappings (same as base)
+        var cloudKey = ResolveUpdateMatchCloudKey(categoryConfig);
+        // The value is correct — PreparePushRecord will have translated the key to a columnId,
+        // but the value itself is unchanged. We return the friendly name here;
+        // callers translate to columnId when needed.
+        return cloudKey;
+    }
+
+    /// <summary>
+    /// AP-specific update match: resolves displayName to columnId for comparison.
+    /// </summary>
+    protected override string? FindExistingRecordByUpdateMatch(
         List<JsonObject> existingRecords,
         SyncCategoryConfig categoryConfig,
-        Dictionary<string, object> pushRecord)
+        string matchValue)
     {
-        var matchColumnId = _columnNameToId.TryGetValue(categoryConfig.CloudMatchField, out var colId)
+        var matchColumnId = _columnNameToId.TryGetValue(categoryConfig.UpdateMatchCloudField, out var colId)
             ? colId
-            : categoryConfig.CloudMatchField;
-
-        var matchValue = pushRecord.TryGetValue(matchColumnId, out var mv)
-            ? mv?.ToString() ?? string.Empty
-            : string.Empty;
-
-        if (string.IsNullOrEmpty(matchValue))
-            return null;
+            : categoryConfig.UpdateMatchCloudField;
 
         foreach (var record in existingRecords)
         {
@@ -805,7 +847,7 @@ public sealed class AssetPandaClient : BaseCloudClient
                 if (idVal is not null)
                 {
                     var id = idVal.GetValue<string>();
-                    _log.Information("AP: Matched {Field}='{Value}' -> id='{Id}'",
+                    _log.Information("AP: Update match {Field}='{Value}' -> id='{Id}'",
                         matchColumnId, matchValue, id);
                     return id;
                 }
