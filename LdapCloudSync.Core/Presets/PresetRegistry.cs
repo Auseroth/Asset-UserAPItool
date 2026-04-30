@@ -15,6 +15,7 @@ public static class PresetRegistry
         Register(Reftab);
         Register(SnipeIt);
         Register(AssetPanda);
+        Register(SolarWinds);
     }
 
     public static CloudPreset Reftab { get; } = new()
@@ -280,6 +281,110 @@ public static class PresetRegistry
             UpdateMatchAdField = "displayName",
             UpdateMatchCloudField = "",
             DefaultMappings = []
+        }
+    };
+
+    public static CloudPreset SolarWinds { get; } = new()
+    {
+        Name = "SolarWinds",
+        ProviderType = "SolarWinds",
+        BaseUrl = "https://api.samanage.com",
+        AuthType = AuthType.BearerToken,
+        ApiKeyHeader = "Authorization",
+        ApiKeyFormat = "Bearer {key}",
+        ContentType = "application/json",
+        Assets = new PresetEndpoints
+        {
+            GetEndpoint = "/hardwares.json",
+            PostEndpoint = "/hardwares.json",
+            PutEndpoint = "/hardwares/{id}.json",
+            ResponseItemsPath = "$",
+            CloudIdField = "id",
+            AdMatchField = "cn",
+            CloudMatchField = "name",
+            UpdateMatchAdField = "cn",
+            UpdateMatchCloudField = "name",
+            DefaultMappings =
+            [
+                new FieldMapping
+                {
+                    CloudField = "name",
+                    AdAttributes = ["cn"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "bio.ssn",
+                    AdAttributes = ["serialNumber"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "description",
+                    AdAttributes = ["description"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                }
+            ]
+        },
+        Users = new PresetEndpoints
+        {
+            GetEndpoint = "/users.json",
+            PostEndpoint = "/users.json",
+            PutEndpoint = "/users/{id}.json",
+            ResponseItemsPath = "$",
+            CloudIdField = "id",
+            AdMatchField = "mail",
+            CloudMatchField = "email",
+            UpdateMatchAdField = "mail",
+            UpdateMatchCloudField = "email",
+            DefaultMappings =
+            [
+                new FieldMapping
+                {
+                    CloudField = "name",
+                    AdAttributes = ["displayName"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "email",
+                    AdAttributes = ["mail"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "title",
+                    AdAttributes = ["title"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "phone",
+                    AdAttributes = ["telephoneNumber"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "mobile_phone",
+                    AdAttributes = ["mobile"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                },
+                new FieldMapping
+                {
+                    CloudField = "department",
+                    AdAttributes = ["department"],
+                    TransformExpression = null,
+                    DefaultValue = null
+                }
+            ]
         }
     };
 

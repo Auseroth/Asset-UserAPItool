@@ -24,6 +24,7 @@ public static class CloudClientFactory
         {
             "Reftab" => new ReftabClient(config, null, logger),
             "AssetPanda" => new AssetPandaClient(config, null, logger),
+            "SolarWinds" => new SolarWindsClient(config, null, logger),
             "SnipeIT" => new GenericCloudClient(config, null, logger),
             _ => new GenericCloudClient(config, null, logger)
         };

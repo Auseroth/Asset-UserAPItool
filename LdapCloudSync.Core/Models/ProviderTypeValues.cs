@@ -9,6 +9,7 @@ public static class ProviderTypeValues
     [
         "Reftab",
         "AssetPanda",
+        "SolarWinds",
         "SnipeIT",
         "Generic (Standard REST)"
     ];
