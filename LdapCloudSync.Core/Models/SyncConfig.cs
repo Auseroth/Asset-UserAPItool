@@ -5,13 +5,19 @@ namespace LdapCloudSync.Core.Models;
 /// </summary>
 public sealed class SyncConfig
 {
-    public AdConnectionConfig ActiveDirectory { get; set; } = new();
+    /// <summary>
+    /// All configured data sources (AD domains and cloud APIs).
+    /// Targets reference a source by its Id via CloudTargetConfig.SourceId.
+    /// </summary>
+    public List<CloudSourceConfig> Sources { get; set; } = [];
+
     public List<CloudTargetConfig> CloudTargets { get; set; } = [];
     public LoggingConfig Logging { get; set; } = new();
 }
 
 /// <summary>
 /// Active Directory connection and search configuration.
+/// Used inside CloudSourceConfig.Ad for AD-type sources.
 /// </summary>
 public sealed class AdConnectionConfig
 {
@@ -49,7 +55,7 @@ public sealed class AdConnectionConfig
     public string ComputerFilter { get; set; } = "(objectClass=computer)";
 
     /// <summary>
-    /// Optional LDAP filter override for users. Defaults to (&amp;(objectClass=user)(objectCategory=person)).
+    /// Optional LDAP filter override for users.
     /// </summary>
     public string UserFilter { get; set; } = "(&(objectClass=user)(objectCategory=person))";
 }

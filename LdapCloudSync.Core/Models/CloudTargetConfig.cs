@@ -8,15 +8,22 @@ public sealed class CloudTargetConfig
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Target";
     public bool Enabled { get; set; } = true;
-    
+
+    /// <summary>
+    /// The Id of the CloudSourceConfig this target pulls data from.
+    /// If empty, the orchestrator falls back to the first available AD source.
+    /// Set to the reserved prefix "file:" + filename to use a saved JSON file source.
+    /// Example: "file:MyExport" reads from ProgramData/LDAPult/sourceFiles/MyExport.json
+    /// </summary>
+    public string SourceId { get; set; } = string.Empty;
+
     /// <summary>
     /// The preset template that was used to create this config (for reference only).
     /// </summary>
     public string PresetOrigin { get; set; } = "Blank (REST)";
-    
+
     /// <summary>
     /// The provider type determines which client implementation to use.
-    /// This persists even if the user modifies fields after applying a preset.
     /// </summary>
     public string ProviderType { get; set; } = "Generic (Standard REST)";
 
@@ -25,36 +32,23 @@ public sealed class CloudTargetConfig
     public SyncCategoryConfig Users { get; set; } = new();
     public ScheduleConfig Schedule { get; set; } = new();
 
-    // ?? Asset Panda Discovery IDs ??????????????????????????????????
-    // These are populated via the UI discovery chain and persisted so
-    // the service can build dynamic endpoints at sync time without
-    // requiring interactive discovery.
+    // Asset Panda Discovery IDs 
 
-    /// <summary>
-    /// Asset Panda account ID. Selected from GET /accounts.
-    /// </summary>
+    /// <summary>Asset Panda account ID. Selected from GET /accounts.</summary>
     public string ApAccountId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Asset Panda module ID. Selected from GET /accounts/{accountId}/modules.
-    /// </summary>
+    /// <summary>Asset Panda module ID. Selected from GET /accounts/{accountId}/modules.</summary>
     public string ApModuleId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Asset Panda collection ID for the Assets category.
-    /// Selected from GET /modules/{moduleId}/collections.
-    /// </summary>
+    /// <summary>Asset Panda collection ID for the Assets category.</summary>
     public string ApAssetsCollectionId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Asset Panda collection ID for the Users/People category.
-    /// Selected from GET /modules/{moduleId}/collections.
-    /// </summary>
+    /// <summary>Asset Panda collection ID for the Users/People category.</summary>
     public string ApUsersCollectionId { get; set; } = string.Empty;
 }
 
 /// <summary>
-/// REST API connection details for a cloud target.
+/// REST API connection details for a cloud target or cloud source.
 /// </summary>
 public sealed class CloudConnectionConfig
 {
@@ -63,9 +57,7 @@ public sealed class CloudConnectionConfig
     public string ApiKey { get; set; } = string.Empty;
     public string ApiSecret { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Header name for API key auth (e.g., "Authorization", "x-api-key").
-    /// </summary>
+    /// <summary>Header name for API key auth (e.g., "Authorization", "x-api-key").</summary>
     public string ApiKeyHeader { get; set; } = "Authorization";
 
     /// <summary>
@@ -74,24 +66,16 @@ public sealed class CloudConnectionConfig
     /// </summary>
     public string ApiKeyFormat { get; set; } = "Bearer {key}";
 
-    /// <summary>
-    /// For Basic Auth: username.
-    /// </summary>
+    /// <summary>For Basic Auth: username.</summary>
     public string BasicUsername { get; set; } = string.Empty;
 
-    /// <summary>
-    /// For Basic Auth: password.
-    /// </summary>
+    /// <summary>For Basic Auth: password.</summary>
     public string BasicPassword { get; set; } = string.Empty;
 
-    /// <summary>
-    /// For HMAC: the hashing algorithm (e.g., "HMACSHA256").
-    /// </summary>
+    /// <summary>For HMAC: the hashing algorithm (e.g., "HMACSHA256").</summary>
     public string HmacAlgorithm { get; set; } = "HMACSHA256";
 
-    /// <summary>
-    /// Content type for POST/PUT requests. Defaults to JSON.
-    /// </summary>
+    /// <summary>Content type for POST/PUT requests. Defaults to JSON.</summary>
     public string ContentType { get; set; } = "application/json";
 }
 
@@ -104,97 +88,91 @@ public enum AuthType
 }
 
 /// <summary>
-/// Configuration for one sync category (Assets or Users).
+/// Configuration for one sync category (Assets or Users) on a cloud target.
 /// </summary>
 public sealed class SyncCategoryConfig
 {
     public bool Enabled { get; set; } = false;
 
-    /// <summary>
-    /// GET endpoint for pulling existing records / discovering fields.
-    /// e.g., "/assets" or "/loanees".
-    /// </summary>
+    /// <summary>GET endpoint for pulling existing records / discovering fields.</summary>
     public string GetEndpoint { get; set; } = string.Empty;
 
-    /// <summary>
-    /// POST endpoint for creating new records.
-    /// </summary>
+    /// <summary>POST endpoint for creating new records.</summary>
     public string PostEndpoint { get; set; } = string.Empty;
 
-    /// <summary>
-    /// PUT endpoint for updating existing records. Use {id} placeholder.
-    /// e.g., "/assets/{id}".
-    /// </summary>
+    /// <summary>PUT endpoint for updating existing records. Use {id} placeholder.</summary>
     public string PutEndpoint { get; set; } = string.Empty;
 
-    /// <summary>
-    /// JSONPath expression to the array of items in the GET response.
-    /// e.g., "$" for root array, "$.data" for nested, "$.rows" etc.
-    /// </summary>
+    /// <summary>JSONPath expression to the array of items in the GET response.</summary>
     public string ResponseItemsPath { get; set; } = "$";
 
-    /// <summary>
-    /// The field name in the cloud response that represents the unique ID.
-    /// </summary>
+    /// <summary>The field name in the cloud response that represents the unique ID.</summary>
     public string CloudIdField { get; set; } = "id";
 
     /// <summary>
-    /// The AD attribute used as the unique key to match AD records to cloud records.
-    /// e.g., "cn" for computers, "sAMAccountName" for users.
+    /// The source field used as the unique key to match source records to cloud records.
+    /// For AD sources: an LDAP attribute name (e.g., "cn", "sAMAccountName").
+    /// For cloud sources: an API response field name.
     /// </summary>
-    public string AdMatchField { get; set; } = string.Empty;
+    public string SourceMatchField { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The cloud field to match against the AD match field.
-    /// </summary>
+    /// <summary>The cloud field to match against the source match field.</summary>
     public string CloudMatchField { get; set; } = string.Empty;
 
-    /// <summary>
-    /// AD attribute used for PUT fallback matching — compared against
-    /// UpdateMatchCloudField in existing cloud records to resolve the record ID for updates.
-    /// </summary>
-    public string UpdateMatchAdField { get; set; } = string.Empty;
+    /// <summary>Source field used for PUT fallback matching.</summary>
+    public string UpdateMatchSourceField { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Cloud field used for PUT fallback matching — the field in existing cloud records
-    /// whose value is compared against the AD record's UpdateMatchAdField.
-    /// </summary>
+    /// <summary>Cloud field used for PUT fallback matching.</summary>
     public string UpdateMatchCloudField { get; set; } = string.Empty;
 
     /// <summary>
-    /// Field mappings: AD attribute -> Cloud field, with optional transform.
+    /// Field mappings: source field -> cloud field, with optional transform.
+    /// SourceFields may be AD attribute names or cloud API field names depending on source type.
     /// </summary>
     public List<FieldMapping> FieldMappings { get; set; } = [];
 
-    /// <summary>
-    /// For Reftab: the category ID (cid) to assign to new assets.
-    /// E.g., 1 = Laptop, 2 = Desktop. Leave 0 to omit from payload.
-    /// </summary>
+    /// <summary>For Reftab: the category ID (cid) to assign to new assets.</summary>
     public int TargetCategoryId { get; set; } = 0;
 
-    /// <summary>
-    /// For Reftab: the location ID (clid) to assign to new assets.
-    /// Leave 0 to omit from payload.
-    /// </summary>
+    /// <summary>For Reftab: the location ID (clid) to assign to new assets.</summary>
     public int TargetLocationId { get; set; } = 0;
 
     /// <summary>
-    /// Per-target AD search base overrides. If set, only these OUs (or groups) are queried
-    /// for this category instead of the global AD search base.
-    /// Leave empty to use the global AD settings.
+    /// Per-target source search base overrides.
+    /// For AD sources: OU distinguished names to restrict the LDAP search.
+    /// Leave empty to use the AD source's global search base.
     /// </summary>
     public List<string> AdSearchBaseOverrides { get; set; } = [];
 
     /// <summary>
-    /// Per-target LDAP filter override. If set, this filter is used instead
-    /// of the global filter for this category.
-    /// Leave empty to use the global AD filter.
+    /// Per-target LDAP filter override (AD sources only).
+    /// Leave empty to use the AD source's global filter.
     /// </summary>
     public string AdFilterOverride { get; set; } = string.Empty;
 
     /// <summary>
     /// When true, treat AdSearchBaseOverrides as group DNs and generate
-    /// a memberOf filter instead of using them as search bases.
+    /// a memberOf filter instead of using them as search bases (AD sources only).
     /// </summary>
     public bool AdSourceIsGroup { get; set; } = false;
+
+    //  Legacy property aliases 
+    // These map old property names to the new generic names so that
+    // ViewModels referencing the old names still compile during migration.
+
+    /// <summary>Alias for SourceMatchField. Use SourceMatchField in new code.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string AdMatchField
+    {
+        get => SourceMatchField;
+        set => SourceMatchField = value;
+    }
+
+    /// <summary>Alias for UpdateMatchSourceField. Use UpdateMatchSourceField in new code.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string UpdateMatchAdField
+    {
+        get => UpdateMatchSourceField;
+        set => UpdateMatchSourceField = value;
+    }
 }

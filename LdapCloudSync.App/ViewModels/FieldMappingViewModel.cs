@@ -5,6 +5,8 @@ namespace LdapCloudSync.App.ViewModels;
 
 /// <summary>
 /// ViewModel for a single row in the field mapping two-column list.
+/// SourceField is the input side - an AD attribute name for AD sources,
+/// or an API field name for cloud/file sources.
 /// </summary>
 public sealed class FieldMappingViewModel : ViewModelBase
 {
@@ -13,7 +15,7 @@ public sealed class FieldMappingViewModel : ViewModelBase
     public FieldMappingViewModel(FieldMapping model)
     {
         CloudField = model.CloudField;
-        AdAttribute = model.AdAttributes.Count > 0 ? model.AdAttributes[0] : string.Empty;
+        SourceField = model.SourceFields.Count > 0 ? model.SourceFields[0] : string.Empty;
         TransformExpression = model.TransformExpression ?? string.Empty;
         DefaultValue = model.DefaultValue ?? string.Empty;
         IsTransform = !string.IsNullOrWhiteSpace(model.TransformExpression);
@@ -30,13 +32,13 @@ public sealed class FieldMappingViewModel : ViewModelBase
         }
     }
 
-    private string _adAttribute = string.Empty;
-    public string AdAttribute
+    private string _sourceField = string.Empty;
+    public string SourceField
     {
-        get => _adAttribute;
+        get => _sourceField;
         set
         {
-            if (SetProperty(ref _adAttribute, value))
+            if (SetProperty(ref _sourceField, value))
                 OnPropertyChanged(nameof(Preview));
         }
     }
@@ -85,8 +87,9 @@ public sealed class FieldMappingViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Sample AD record used to generate the live preview.
-    /// Set by the parent VM when AD preview data is available.
+    /// Sample source record used to generate the live preview.
+    /// Set by the parent VM when source preview data is available.
+    /// Works for AD records and cloud API records alike.
     /// </summary>
     private Dictionary<string, string>? _sampleRecord;
     public Dictionary<string, string>? SampleRecord
@@ -101,29 +104,22 @@ public sealed class FieldMappingViewModel : ViewModelBase
 
     /// <summary>
     /// Live preview showing what value this mapping will produce.
-    /// Uses sample AD data if available, otherwise shows a placeholder pattern.
+    /// Uses sample source data if available, otherwise shows a structural placeholder.
     /// </summary>
     public string Preview
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(CloudField) && string.IsNullOrWhiteSpace(AdAttribute))
+            if (string.IsNullOrWhiteSpace(CloudField) && string.IsNullOrWhiteSpace(SourceField))
                 return "";
 
-            // If we have real sample data, compute the actual result
             if (_sampleRecord is not null && _sampleRecord.Count > 0)
-            {
                 return ComputeLivePreview(_sampleRecord);
-            }
 
-            // No sample data — show a structural preview
             return ComputeStructuralPreview();
         }
     }
 
-    /// <summary>
-    /// Computes preview using a real AD record sample.
-    /// </summary>
     private string ComputeLivePreview(Dictionary<string, string> sample)
     {
         try
@@ -132,16 +128,14 @@ public sealed class FieldMappingViewModel : ViewModelBase
 
             if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
             {
-                // Replay the transform expression against sample data
                 var result = TransformEngine.PreviewTransform(sample, mapping);
                 return string.IsNullOrEmpty(result)
                     ? (DefaultValue.Length > 0 ? $"\u2192 \"{DefaultValue}\" (default)" : "\u2192 (empty)")
                     : $"\u2192 \"{result}\"";
             }
 
-            // Direct 1:1 mapping
-            if (mapping.AdAttributes.Count > 0 &&
-                sample.TryGetValue(mapping.AdAttributes[0], out var value) &&
+            if (mapping.SourceFields.Count > 0 &&
+                sample.TryGetValue(mapping.SourceFields[0], out var value) &&
                 !string.IsNullOrEmpty(value))
             {
                 return $"\u2192 \"{value}\"";
@@ -157,22 +151,18 @@ public sealed class FieldMappingViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Shows a structural preview when no sample AD data is available.
-    /// </summary>
     private string ComputeStructuralPreview()
     {
         if (!string.IsNullOrWhiteSpace(TransformExpression))
         {
-            // Show the expression pattern, e.g., {givenName} {sn}
-            var attrs = TransformEngine.ExtractAttributeNames(TransformExpression);
-            return attrs.Count > 0
+            var fields = TransformEngine.ExtractAttributeNames(TransformExpression);
+            return fields.Count > 0
                 ? $"\u2192 {TransformExpression}"
                 : $"\u2192 \"{TransformExpression}\" (static)";
         }
 
-        if (!string.IsNullOrWhiteSpace(AdAttribute))
-            return $"\u2192 [{AdAttribute}]";
+        if (!string.IsNullOrWhiteSpace(SourceField))
+            return $"\u2192 [{SourceField}]";
 
         if (!string.IsNullOrWhiteSpace(DefaultValue))
             return $"\u2192 \"{DefaultValue}\" (default)";
@@ -191,13 +181,13 @@ public sealed class FieldMappingViewModel : ViewModelBase
         if (IsTransform && !string.IsNullOrWhiteSpace(TransformExpression))
         {
             mapping.TransformExpression = TransformExpression;
-            mapping.AdAttributes = TransformEngine.ExtractAttributeNames(TransformExpression).ToList();
+            mapping.SourceFields = TransformEngine.ExtractAttributeNames(TransformExpression).ToList();
         }
         else
         {
-            mapping.AdAttributes = string.IsNullOrWhiteSpace(AdAttribute)
+            mapping.SourceFields = string.IsNullOrWhiteSpace(SourceField)
                 ? []
-                : [AdAttribute];
+                : [SourceField];
         }
 
         return mapping;

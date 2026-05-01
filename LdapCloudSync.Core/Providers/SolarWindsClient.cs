@@ -87,7 +87,7 @@ public sealed class SolarWindsClient : BaseCloudClient
         {
             _log.Warning("SolarWinds requires UpdateMatchAdField and UpdateMatchCloudField to prevent duplicates. Skipping sync.");
             result.Failed = records.Count;
-            result.Errors.Add("Match fields not configured — cannot determine POST vs PUT.");
+            result.Errors.Add("Match fields not configured - cannot determine POST vs PUT.");
             return result;
         }
 
@@ -106,7 +106,7 @@ public sealed class SolarWindsClient : BaseCloudClient
                 if (string.IsNullOrEmpty(matchValue))
                 {
                     result.Failed++;
-                    result.Errors.Add($"Match field '{updateMatchCloudKey}' is empty — cannot determine if record exists.");
+                    result.Errors.Add($"Match field '{updateMatchCloudKey}' is empty - cannot determine if record exists.");
                     continue;
                 }
 

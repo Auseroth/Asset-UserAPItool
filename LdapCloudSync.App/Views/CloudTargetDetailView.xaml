@@ -4,7 +4,7 @@
              xmlns:models="clr-namespace:LdapCloudSync.Core.Models;assembly=LdapCloudSync.Core">
     <StackPanel>
 
-        <!-- Identity & Preset -->
+        <!-- Identity, Source & Preset -->
         <Border Style="{StaticResource CardPanel}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -29,10 +29,10 @@
                             <KeyBinding Key="Return" Command="{Binding ApplyPresetCommand}" CommandParameter="{Binding PresetOrigin}" />
                         </ComboBox.InputBindings>
                     </ComboBox>
-                    <Button Content="Apply Template" 
-                            Command="{Binding ApplyPresetCommand}" 
+                    <Button Content="Apply Template"
+                            Command="{Binding ApplyPresetCommand}"
                             CommandParameter="{Binding PresetOrigin}"
-                            Style="{StaticResource SecondaryButton}" 
+                            Style="{StaticResource SecondaryButton}"
                             Padding="8,2" FontSize="10" Margin="0,4,0,0"
                             ToolTip="Fills in endpoints, mappings, and auth settings from the selected template" />
                 </StackPanel>
@@ -43,8 +43,49 @@
             </Grid>
         </Border>
 
-        <!-- Connection Settings -->
-        <TextBlock Text="Connection" Style="{StaticResource SectionHeader}" />
+        <!-- Source Selection -->
+        <TextBlock Text="Data Source" Style="{StaticResource SectionHeader}" />
+        <Border Style="{StaticResource CardPanel}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Style="{StaticResource FieldLabel}">
+                        Source
+                        <Run Foreground="{StaticResource TextSecondaryBrush}" FontSize="10">
+                            (configured on the Sources tab  AD, Cloud API, or saved File)
+                        </Run>
+                    </TextBlock>
+                    <ComboBox ItemsSource="{Binding AvailableSourceOptions}"
+                              SelectedItem="{Binding SelectedSourceDisplay, Mode=TwoWay}"
+                              ToolTip="Which source to pull records from when syncing to this target" />
+                </StackPanel>
+
+                <Button Grid.Column="2" Content=" Refresh List"
+                        Command="{Binding RefreshSourceOptionsCommand}"
+                        Style="{StaticResource SecondaryButton}"
+                        Padding="8,4" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,4"
+                        ToolTip="Reload available sources (e.g., after adding a source or saving a file)" />
+
+                <!-- Selected source summary badge -->
+                <Border Grid.Column="4" CornerRadius="3" Padding="10,4" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                    <TextBlock Grid.Column="4"
+           Text="{Binding SelectedSourceDisplay}"
+           VerticalAlignment="Bottom" Margin="0,0,0,8"
+           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+           FontStyle="Italic" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Connection Settings (Target API) -->
+        <TextBlock Text="Target Connection" Style="{StaticResource SectionHeader}" />
         <Border Style="{StaticResource CardPanel}">
             <StackPanel>
                 <Grid>
@@ -98,12 +139,12 @@
 
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Content Type" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding ContentType, UpdateSourceTrigger=PropertyChanged}" 
+                        <TextBox Text="{Binding ContentType, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="e.g., application/json" />
                     </StackPanel>
                 </Grid>
 
-                <!-- Asset Panda: Account + Module discovery (in Connection section) -->
+                <!-- Asset Panda: Account + Module discovery -->
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0"
                         Visibility="{Binding ShowApSettings, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
@@ -164,11 +205,14 @@
         <!-- Assets Section -->
         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
             <TextBlock Text="Assets (Computers)" Style="{StaticResource SectionHeader}" />
-            <CheckBox Content="Enabled" IsChecked="{Binding AssetsEnabled}" VerticalAlignment="Center" Margin="16,12,0,0" />
+            <CheckBox Content="Enabled" IsChecked="{Binding AssetsEnabled}"
+                      VerticalAlignment="Center" Margin="16,12,0,0" />
         </StackPanel>
-        <Border Style="{StaticResource CardPanel}" Visibility="{Binding AssetsEnabled, Converter={StaticResource BoolToVis}}">
+        <Border Style="{StaticResource CardPanel}"
+                Visibility="{Binding AssetsEnabled, Converter={StaticResource BoolToVis}}">
             <StackPanel>
-                <!-- AD Source for Assets -->
+
+                <!-- Source scope (OU/group selection - relevant for AD sources) -->
                 <StackPanel Margin="0,0,0,4">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -178,18 +222,27 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="AD Source (Computer OUs)" Style="{StaticResource FieldLabel}" />
-                            <Border BorderBrush="#CCC" BorderThickness="1" CornerRadius="3" MaxHeight="120" Margin="0,2,0,0">
+                            <TextBlock Style="{StaticResource FieldLabel}">
+                                Source Scope
+                                <Run Foreground="{StaticResource TextSecondaryBrush}" FontSize="10">
+                                    (OU / Group filter - applies to AD sources only)
+                                </Run>
+                            </TextBlock>
+                            <Border BorderBrush="#CCC" BorderThickness="1" CornerRadius="3"
+                                    MaxHeight="120" Margin="0,2,0,0">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <StackPanel>
-                                        <CheckBox Content="Select All" FontWeight="SemiBold" FontSize="11" Margin="6,4,0,2"
+                                        <CheckBox Content="Select All" FontWeight="SemiBold" FontSize="11"
+                                                  Margin="6,4,0,2"
                                                   Command="{Binding SelectAllAssetsOUsCommand}"
                                                   CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" />
                                         <ItemsControl ItemsSource="{Binding AssetsOUSelections}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <CheckBox IsChecked="{Binding IsSelected}" Content="{Binding Value}"
-                                                              FontFamily="Consolas" FontSize="11" Margin="6,1,6,1" />
+                                                    <CheckBox IsChecked="{Binding IsSelected}"
+                                                              Content="{Binding Value}"
+                                                              FontFamily="Consolas" FontSize="11"
+                                                              Margin="6,1,6,1" />
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -198,18 +251,19 @@
                             </Border>
                         </StackPanel>
 
-                        <Button Grid.Column="2" Content="&#x21BB; Refresh OUs"
-                                Command="{Binding DataContext.AdSettingsVm.RefreshOUsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        <Button Grid.Column="2" Content=" Refresh OUs"
+                                Command="{Binding RefreshPairedSourceOUsCommand}"
                                 Style="{StaticResource SecondaryButton}"
                                 Padding="8,4" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,4"
-                                ToolTip="Re-discover OUs from Active Directory (use after changing AD settings)" />
+                                ToolTip="Re-discover OUs from the paired AD source" />
                     </Grid>
                     <TextBlock Text="{Binding AssetsEffectiveFilter}" FontFamily="Consolas" FontSize="10"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap"
-                               ToolTip="The LDAP filter that will be used at sync time" />
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,2,0,0" TextWrapping="Wrap"
+                               ToolTip="The effective source filter that will be applied at sync time" />
                 </StackPanel>
 
-                <!-- Reftab Asset Settings (Category + Location) - only visible for Reftab -->
+                <!-- Reftab Asset Settings -->
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,8" Margin="0,4,0,4"
                         Visibility="{Binding ShowCategorySelector, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
@@ -259,7 +313,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Asset Panda Asset Settings (Collection + Columns) - only visible for AssetPanda -->
+                <!-- Asset Panda Asset Settings -->
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,8" Margin="0,4,0,4"
                         Visibility="{Binding ShowApAssetSettings, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
@@ -279,7 +333,8 @@
                                           SelectedValue="{Binding ApAssetsCollectionId, Mode=TwoWay}" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                            <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                        VerticalAlignment="Bottom" Margin="0,0,0,4">
                                 <Button Content="Refresh"
                                         Command="{Binding RefreshApAssetsCollectionsCommand}"
                                         Style="{StaticResource SecondaryButton}"
@@ -288,13 +343,13 @@
                                         Command="{Binding RefreshApAssetColumnsCommand}"
                                         Style="{StaticResource SecondaryButton}"
                                         Padding="8,4" FontSize="11"
-                                        ToolTip="Fetches column definitions from the selected collection to populate Cloud Fields" />
+                                        ToolTip="Fetches column definitions to populate Source Fields" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- Generic Endpoints (hidden for Asset Panda) -->
+                <!-- Generic Endpoints (hidden for AssetPanda) -->
                 <Grid Visibility="{Binding HideGenericEndpoints, Converter={StaticResource InverseBoolToVis}}">
                     <Grid.RowDefinitions>
                         <RowDefinition />
@@ -338,8 +393,9 @@
                             <TextBox Text="{Binding AssetsResponsePath, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2">
-                            <TextBlock Text="AD Match Field" Style="{StaticResource FieldLabel}" />
-                            <TextBox Text="{Binding AssetsAdMatchField, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Source Match Field" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AssetsAdMatchField, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Field from the source record used to match against the cloud record" />
                         </StackPanel>
                         <StackPanel Grid.Column="4">
                             <TextBlock Text="Cloud Match Field" Style="{StaticResource FieldLabel}" />
@@ -347,11 +403,12 @@
                         </StackPanel>
                     </Grid>
                 </Grid>
-                <!-- Update Match Fields for PUT fallback -->
+
+                <!-- Update Match Fields -->
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0">
                     <StackPanel>
                         <TextBlock Text="Update: Fields to Match" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"
-                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates. The AD field value is compared against the Cloud field in the GET response." />
+                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates." />
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -360,14 +417,15 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="AD Field" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="Source Field" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding AssetsUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DiscoveredAdComputerAttributes}"
                                           IsEditable="True" FontSize="11"
-                                          ToolTip="AD attribute to match (e.g., cn)" />
+                                          ToolTip="Source field to match (e.g., cn, serial_number)" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                                       Margin="0,0,0,6" FontWeight="Bold" FontSize="14" />
+                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center"
+                                       VerticalAlignment="Bottom" Margin="0,0,0,6"
+                                       FontWeight="Bold" FontSize="14" />
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Cloud Field" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding AssetsUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
@@ -379,20 +437,23 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Asset Field Mapping -->
+                <!-- Asset Field Mappings -->
                 <TextBlock Text="Field Mappings" FontWeight="SemiBold" Margin="0,12,0,4" />
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <Button Content="&#x25B6; Preview Mappings" Command="{Binding PreviewAssetMappingsCommand}"
+                    <Button Content="Preview Mappings" Command="{Binding PreviewAssetMappingsCommand}"
                             Style="{StaticResource PrimaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
-                            ToolTip="Queries AD for the first computer record and shows real values in the Preview column" />
-                    <Button Content="Discover Cloud Fields" Command="{Binding DiscoverAssetFieldsCommand}"
-                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
-                    <Button Content="Discover AD Attributes" Command="{Binding DiscoverAdComputerFieldsCommand}"
-                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
+                            ToolTip="Fetch one source record and show live values in the Preview column" />
+                    <Button Content="Discover Target Fields" Command="{Binding DiscoverAssetFieldsCommand}"
+                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
+                            ToolTip="Discover available field names from the target cloud API" />
+                    <Button Content="Discover Source Fields" Command="{Binding DiscoverAdComputerFieldsCommand}"
+                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
+                            ToolTip="Discover available field names from the paired source (AD attributes or API fields)" />
                     <Button Content="+ Add Mapping" Command="{Binding AddAssetMappingCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" />
                 </StackPanel>
 
+                <!-- Mapping header row -->
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -402,7 +463,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="30" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="AD Attribute" FontWeight="SemiBold" FontSize="11" />
+                    <TextBlock Grid.Column="0" Text="Source Field" FontWeight="SemiBold" FontSize="11" />
                     <TextBlock Grid.Column="1" Text="->" HorizontalAlignment="Center" FontSize="11" />
                     <TextBlock Grid.Column="2" Text="Cloud Field" FontWeight="SemiBold" FontSize="11" />
                     <TextBlock Grid.Column="3" Text="Transform / Default" FontWeight="SemiBold" FontSize="11" />
@@ -422,24 +483,30 @@
                                     <ColumnDefinition Width="30" />
                                 </Grid.ColumnDefinitions>
 
-                                <ComboBox Grid.Column="0" Text="{Binding AdAttribute, UpdateSourceTrigger=PropertyChanged}"
+                                <ComboBox Grid.Column="0"
+                                          Text="{Binding SourceField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DataContext.DiscoveredAdComputerAttributes, RelativeSource={RelativeSource AncestorType=Border}}"
                                           IsEditable="True" FontSize="11" />
-                                <TextBlock Grid.Column="1" Text="->" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <ComboBox Grid.Column="2" Text="{Binding CloudField, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBlock Grid.Column="1" Text="->"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="2"
+                                          Text="{Binding CloudField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DataContext.DiscoveredAssetCloudFields, RelativeSource={RelativeSource AncestorType=Border}}"
                                           IsEditable="True" FontSize="11" />
-                                <TextBox Grid.Column="3" Text="{Binding TransformExpression, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBox Grid.Column="3"
+                                         Text="{Binding TransformExpression, UpdateSourceTrigger=PropertyChanged}"
                                          FontSize="11" Margin="4,0,0,0"
-                                         ToolTip="Optional: {attr1} {attr2} for merge, or leave empty for 1:1 mapping" />
-                                <TextBlock Grid.Column="4" Text="{Binding Preview}" FontFamily="Consolas" FontSize="10"
-                                           Foreground="#4A90D9" VerticalAlignment="Center" Margin="4,0,0,0"
-                                           TextTrimming="CharacterEllipsis"
+                                         ToolTip="{}{field1} {field2} to merge, empty = 1:1 mapping" />
+                                <TextBlock Grid.Column="4" Text="{Binding Preview}"
+                                           FontFamily="Consolas" FontSize="10"
+                                           Foreground="#4A90D9" VerticalAlignment="Center"
+                                           Margin="4,0,0,0" TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Preview}" />
                                 <Button Grid.Column="5" Content="X" FontSize="9" Padding="4,2"
                                         Command="{Binding DataContext.RemoveAssetMappingCommand, RelativeSource={RelativeSource AncestorType=Border}}"
                                         CommandParameter="{Binding}"
-                                        Background="Transparent" BorderThickness="0" Cursor="Hand" Foreground="Gray" />
+                                        Background="Transparent" BorderThickness="0"
+                                        Cursor="Hand" Foreground="Gray" />
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -450,11 +517,14 @@
         <!-- Users Section -->
         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
             <TextBlock Text="Users (Loanees)" Style="{StaticResource SectionHeader}" />
-            <CheckBox Content="Enabled" IsChecked="{Binding UsersEnabled}" VerticalAlignment="Center" Margin="16,12,0,0" />
+            <CheckBox Content="Enabled" IsChecked="{Binding UsersEnabled}"
+                      VerticalAlignment="Center" Margin="16,12,0,0" />
         </StackPanel>
-        <Border Style="{StaticResource CardPanel}" Visibility="{Binding UsersEnabled, Converter={StaticResource BoolToVis}}">
+        <Border Style="{StaticResource CardPanel}"
+                Visibility="{Binding UsersEnabled, Converter={StaticResource BoolToVis}}">
             <StackPanel>
-                <!-- AD Source for Users -->
+
+                <!-- Source scope (Users) -->
                 <Grid Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -465,18 +535,27 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="AD Source (User OUs or Groups)" Style="{StaticResource FieldLabel}" />
-                        <Border BorderBrush="#CCC" BorderThickness="1" CornerRadius="3" MaxHeight="120" Margin="0,2,0,0">
+                        <TextBlock Style="{StaticResource FieldLabel}">
+                            Source Scope
+                            <Run Foreground="{StaticResource TextSecondaryBrush}" FontSize="10">
+                                (OU / Group filter - applies to AD sources only)
+                            </Run>
+                        </TextBlock>
+                        <Border BorderBrush="#CCC" BorderThickness="1" CornerRadius="3"
+                                MaxHeight="120" Margin="0,2,0,0">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <CheckBox Content="Select All" FontWeight="SemiBold" FontSize="11" Margin="6,4,0,2"
+                                    <CheckBox Content="Select All" FontWeight="SemiBold" FontSize="11"
+                                              Margin="6,4,0,2"
                                               Command="{Binding SelectAllUsersOUsCommand}"
                                               CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" />
                                     <ItemsControl ItemsSource="{Binding UsersOUSelections}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <CheckBox IsChecked="{Binding IsSelected}" Content="{Binding Value}"
-                                                          FontFamily="Consolas" FontSize="11" Margin="6,1,6,1" />
+                                                <CheckBox IsChecked="{Binding IsSelected}"
+                                                          Content="{Binding Value}"
+                                                          FontFamily="Consolas" FontSize="11"
+                                                          Margin="6,1,6,1" />
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -484,24 +563,24 @@
                             </ScrollViewer>
                         </Border>
                         <TextBlock Text="{Binding UsersEffectiveFilter}" FontFamily="Consolas" FontSize="10"
-                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                   ToolTip="The LDAP filter that will be used at sync time" />
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,2,0,0" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,8,0,0">
                         <CheckBox Content="Group (memberOf)" IsChecked="{Binding UsersAdSourceIsGroup}"
-                                  ToolTip="Check to treat selections as group DNs and filter by memberOf instead of searching OUs directly."
-                                  FontSize="11" />
+                                  FontSize="11"
+                                  ToolTip="Treat selections as group DNs and filter by memberOf instead of OU search" />
                     </StackPanel>
 
-                    <Button Grid.Column="4" Content="&#x21BB; Refresh OUs"
-                            Command="{Binding DataContext.AdSettingsVm.RefreshOUsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    <Button Grid.Column="4" Content="Refresh OUs"
+                            Command="{Binding RefreshPairedSourceOUsCommand}"
                             Style="{StaticResource SecondaryButton}"
                             Padding="8,4" FontSize="11" VerticalAlignment="Center" Margin="0,8,0,0"
-                            ToolTip="Re-discover OUs from Active Directory (use after changing AD settings)" />
+                            ToolTip="Re-discover OUs from the paired AD source" />
                 </Grid>
 
-                <!-- Asset Panda People Settings (Collection + Columns) - only visible for AssetPanda -->
+                <!-- Asset Panda People Settings -->
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,8" Margin="0,4,0,4"
                         Visibility="{Binding ShowApUserSettings, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
@@ -521,7 +600,8 @@
                                           SelectedValue="{Binding ApUsersCollectionId, Mode=TwoWay}" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                            <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                        VerticalAlignment="Bottom" Margin="0,0,0,4">
                                 <Button Content="Refresh"
                                         Command="{Binding RefreshApUsersCollectionsCommand}"
                                         Style="{StaticResource SecondaryButton}"
@@ -530,13 +610,13 @@
                                         Command="{Binding RefreshApUserColumnsCommand}"
                                         Style="{StaticResource SecondaryButton}"
                                         Padding="8,4" FontSize="11"
-                                        ToolTip="Fetches column definitions from the selected collection to populate Cloud Fields" />
+                                        ToolTip="Fetches column definitions to populate Source Fields" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- Generic Endpoints (hidden for Asset Panda) -->
+                <!-- Generic Endpoints (hidden for AssetPanda) -->
                 <Grid Visibility="{Binding HideGenericEndpoints, Converter={StaticResource InverseBoolToVis}}">
                     <Grid.RowDefinitions>
                         <RowDefinition />
@@ -580,8 +660,9 @@
                             <TextBox Text="{Binding UsersResponsePath, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2">
-                            <TextBlock Text="AD Match Field" Style="{StaticResource FieldLabel}" />
-                            <TextBox Text="{Binding UsersAdMatchField, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Source Match Field" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding UsersAdMatchField, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Field from the source record used to match against the cloud record" />
                         </StackPanel>
                         <StackPanel Grid.Column="4">
                             <TextBlock Text="Cloud Match Field" Style="{StaticResource FieldLabel}" />
@@ -590,11 +671,11 @@
                     </Grid>
                 </Grid>
 
-                <!-- Update Match Fields for PUT fallback -->
+                <!-- Update Match Fields -->
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0">
                     <StackPanel>
                         <TextBlock Text="Update: Fields to Match" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"
-                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates. The AD field value is compared against the Cloud field in the GET response." />
+                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates." />
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -603,14 +684,15 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="AD Field" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="Source Field" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding UsersUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DiscoveredAdUserAttributes}"
                                           IsEditable="True" FontSize="11"
-                                          ToolTip="AD attribute to match (e.g., mail)" />
+                                          ToolTip="Source field to match (e.g., mail, sAMAccountName)" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                                       Margin="0,0,0,6" FontWeight="Bold" FontSize="14" />
+                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center"
+                                       VerticalAlignment="Bottom" Margin="0,0,0,6"
+                                       FontWeight="Bold" FontSize="14" />
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Cloud Field" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding UsersUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
@@ -622,20 +704,23 @@
                     </StackPanel>
                 </Border>
 
-                <!-- User Field Mapping -->
+                <!-- User Field Mappings -->
                 <TextBlock Text="Field Mappings" FontWeight="SemiBold" Margin="0,12,0,4" />
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <Button Content="&#x25B6; Preview Mappings" Command="{Binding PreviewUserMappingsCommand}"
+                    <Button Content="Preview Mappings" Command="{Binding PreviewUserMappingsCommand}"
                             Style="{StaticResource PrimaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
-                            ToolTip="Queries AD for the first user record and shows real values in the Preview column" />
-                    <Button Content="Discover Cloud Fields" Command="{Binding DiscoverUserFieldsCommand}"
-                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
-                    <Button Content="Discover AD Attributes" Command="{Binding DiscoverAdUserFieldsCommand}"
-                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
+                            ToolTip="Fetch one source record and show live values in the Preview column" />
+                    <Button Content="Discover Target Fields" Command="{Binding DiscoverUserFieldsCommand}"
+                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
+                            ToolTip="Discover available field names from the target cloud API" />
+                    <Button Content="Discover Source Fields" Command="{Binding DiscoverAdUserFieldsCommand}"
+                            Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0,0,6,0"
+                            ToolTip="Discover available field names from the paired source (AD attributes or API fields)" />
                     <Button Content="+ Add Mapping" Command="{Binding AddUserMappingCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" />
                 </StackPanel>
 
+                <!-- Mapping header row -->
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -645,7 +730,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="30" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="AD Attribute" FontWeight="SemiBold" FontSize="11" />
+                    <TextBlock Grid.Column="0" Text="Source Field" FontWeight="SemiBold" FontSize="11" />
                     <TextBlock Grid.Column="1" Text="->" HorizontalAlignment="Center" FontSize="11" />
                     <TextBlock Grid.Column="2" Text="Cloud Field" FontWeight="SemiBold" FontSize="11" />
                     <TextBlock Grid.Column="3" Text="Transform / Default" FontWeight="SemiBold" FontSize="11" />
@@ -665,31 +750,36 @@
                                     <ColumnDefinition Width="30" />
                                 </Grid.ColumnDefinitions>
 
-                                <ComboBox Grid.Column="0" Text="{Binding AdAttribute, UpdateSourceTrigger=PropertyChanged}"
+                                <ComboBox Grid.Column="0"
+                                          Text="{Binding SourceField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DataContext.DiscoveredAdUserAttributes, RelativeSource={RelativeSource AncestorType=Border}}"
                                           IsEditable="True" FontSize="11" />
-                                <TextBlock Grid.Column="1" Text="->" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <ComboBox Grid.Column="2" Text="{Binding CloudField, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBlock Grid.Column="1" Text="->"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="2"
+                                          Text="{Binding CloudField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DataContext.DiscoveredUserCloudFields, RelativeSource={RelativeSource AncestorType=Border}}"
                                           IsEditable="True" FontSize="11" />
-                                <TextBox Grid.Column="3" Text="{Binding TransformExpression, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBox Grid.Column="3"
+                                         Text="{Binding TransformExpression, UpdateSourceTrigger=PropertyChanged}"
                                          FontSize="11" Margin="4,0,0,0"
-                                         ToolTip="Optional: {attr1} {attr2} for merge, or leave empty for 1:1 mapping" />
-                                <TextBlock Grid.Column="4" Text="{Binding Preview}" FontFamily="Consolas" FontSize="10"
-                                           Foreground="#4A90D9" VerticalAlignment="Center" Margin="4,0,0,0"
-                                           TextTrimming="CharacterEllipsis"
+                                         ToolTip="{}{field1} {field2} to merge, empty = 1:1 mapping" />
+                                <TextBlock Grid.Column="4" Text="{Binding Preview}"
+                                           FontFamily="Consolas" FontSize="10"
+                                           Foreground="#4A90D9" VerticalAlignment="Center"
+                                           Margin="4,0,0,0" TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Preview}" />
                                 <Button Grid.Column="5" Content="X" FontSize="9" Padding="4,2"
                                         Command="{Binding DataContext.RemoveUserMappingCommand, RelativeSource={RelativeSource AncestorType=Border}}"
                                         CommandParameter="{Binding}"
-                                        Background="Transparent" BorderThickness="0" Cursor="Hand" Foreground="Gray" />
+                                        Background="Transparent" BorderThickness="0"
+                                        Cursor="Hand" Foreground="Gray" />
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
         </Border>
-
 
         <!-- Schedule Section -->
         <TextBlock Text="Schedule" Style="{StaticResource SectionHeader}" />
@@ -736,35 +826,33 @@
                                Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
+                <StackPanel
+                    Visibility="{Binding PrimaryScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Cron expression" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <TextBox Text="{Binding PrimaryCronExpression, UpdateSourceTrigger=PropertyChanged}"
                                  Width="200" VerticalAlignment="Center" FontFamily="Consolas" />
                     </StackPanel>
-                    <TextBlock Text="Format: min hour day month weekday | Examples: '0 2 * * *' = daily 2am | '0 */6 * * *' = every 6 hours"
-                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                    <TextBlock FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,4,0,0" TextWrapping="Wrap">
+                        Format: min hour day month weekday | Examples: '0 2 * * *' = daily 2am | '0 */6 * * *' = every 6 hours
+                    </TextBlock>
                 </StackPanel>
 
-                <StackPanel Margin="0,16,0,0">
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding CoupledSchedule}" Value="False">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
-
+                <!-- Users schedule (only shown when not coupled) -->
+                <StackPanel Margin="0,16,0,0"
+                            Visibility="{Binding CoupledSchedule, Converter={StaticResource InverseBoolToVis}}">
                     <TextBlock Text="Users Schedule" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4" />
+
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <RadioButton Content="Every X hours" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Interval}"
+                        <RadioButton Content="Every X hours"
+                                     IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Interval}"
                                      Margin="0,0,16,0" />
-                        <RadioButton Content="Daily at specific time" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
+                        <RadioButton Content="Daily at specific time"
+                                     IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=DailyAt}"
                                      Margin="0,0,16,0" />
-                        <RadioButton Content="Advanced (Cron)" IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}" />
+                        <RadioButton Content="Advanced (Cron)"
+                                     IsChecked="{Binding UsersScheduleType, Converter={StaticResource EnumBoolConverter}, ConverterParameter=Cron}" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal"
@@ -784,16 +872,27 @@
                                    Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
                     </StackPanel>
 
-                    <StackPanel Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
+                    <StackPanel
+                        Visibility="{Binding UsersScheduleType, Converter={StaticResource EnumToVis}, ConverterParameter=Cron}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="Cron expression" VerticalAlignment="Center" Margin="0,0,6,0" />
                             <TextBox Text="{Binding UsersCronExpression, UpdateSourceTrigger=PropertyChanged}"
                                      Width="200" VerticalAlignment="Center" FontFamily="Consolas" />
                         </StackPanel>
-                        <TextBlock Text="Format: min hour day month weekday | Examples: '0 2 * * *' = daily 2am | '0 3 * * 1-5' = weekdays 3am"
-                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Test Sync -->
+        <Border Style="{StaticResource CardPanel}">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Test Sync (10 records)" Command="{Binding RunLocalTestSyncCommand}"
+                        Style="{StaticResource PrimaryButton}" Padding="14,6" FontSize="12" />
+                <TextBlock Text="Fetches 10 source records, transforms them, and shows the exact API payload before sending."
+                           VerticalAlignment="Center" Margin="14,0,0,0"
+                           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" MaxWidth="400" />
             </StackPanel>
         </Border>
 

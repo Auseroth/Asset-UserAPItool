@@ -5,8 +5,10 @@ using Serilog;
 namespace LdapCloudSync.Core.Services;
 
 /// <summary>
-/// Applies field mappings and transforms to convert AD records into cloud-ready dictionaries.
+/// Applies field mappings and transforms to convert source records into cloud-ready dictionaries.
 /// Handles direct 1:1 mappings, multi-field merges, and expression-based transforms.
+/// Works uniformly for AD, cloud API, and file sources - the input is always a flat
+/// string dictionary regardless of source type.
 /// </summary>
 public sealed partial class TransformEngine
 {
@@ -18,20 +20,20 @@ public sealed partial class TransformEngine
     }
 
     /// <summary>
-    /// Transforms a batch of AD records using the given field mappings.
+    /// Transforms a batch of source records using the given field mappings.
     /// </summary>
-    /// <param name="adRecords">Raw AD records (attribute -> value dictionaries).</param>
+    /// <param name="sourceRecords">Raw source records (field -> value dictionaries).</param>
     /// <param name="mappings">Field mappings to apply.</param>
     /// <returns>Cloud-ready records (cloud field -> transformed value dictionaries).</returns>
     public IReadOnlyList<Dictionary<string, object>> TransformBatch(
-        IReadOnlyList<Dictionary<string, string>> adRecords,
+        IReadOnlyList<Dictionary<string, string>> sourceRecords,
         IReadOnlyList<FieldMapping> mappings)
     {
-        var results = new List<Dictionary<string, object>>(adRecords.Count);
+        var results = new List<Dictionary<string, object>>(sourceRecords.Count);
 
-        foreach (var adRecord in adRecords)
+        foreach (var sourceRecord in sourceRecords)
         {
-            var cloudRecord = TransformSingle(adRecord, mappings);
+            var cloudRecord = TransformSingle(sourceRecord, mappings);
             if (cloudRecord.Count > 0)
                 results.Add(cloudRecord);
         }
@@ -43,10 +45,10 @@ public sealed partial class TransformEngine
     }
 
     /// <summary>
-    /// Transforms a single AD record into a cloud-ready dictionary.
+    /// Transforms a single source record into a cloud-ready dictionary.
     /// </summary>
     public Dictionary<string, object> TransformSingle(
-        Dictionary<string, string> adRecord,
+        Dictionary<string, string> sourceRecord,
         IReadOnlyList<FieldMapping> mappings)
     {
         var cloudRecord = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
@@ -55,11 +57,9 @@ public sealed partial class TransformEngine
         {
             try
             {
-                var value = ApplyMapping(adRecord, mapping);
+                var value = ApplyMapping(sourceRecord, mapping);
                 if (value is not null)
-                {
                     cloudRecord[mapping.CloudField] = value;
-                }
             }
             catch (Exception ex)
             {
@@ -73,55 +73,45 @@ public sealed partial class TransformEngine
     /// <summary>
     /// Applies a single mapping to produce a value for one cloud field.
     /// </summary>
-    private static string? ApplyMapping(Dictionary<string, string> adRecord, FieldMapping mapping)
+    private static string? ApplyMapping(Dictionary<string, string> sourceRecord, FieldMapping mapping)
     {
-        // If a transform expression is provided, use it
         if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
-        {
-            return ApplyTransformExpression(adRecord, mapping);
-        }
+            return ApplyTransformExpression(sourceRecord, mapping);
 
-        // Simple 1:1 mapping: take the value of the first (and only) AD attribute
-        if (mapping.AdAttributes.Count == 0)
+        if (mapping.SourceFields.Count == 0)
             return mapping.DefaultValue;
 
-        var attrName = mapping.AdAttributes[0];
-        if (adRecord.TryGetValue(attrName, out var value) && !string.IsNullOrEmpty(value))
+        var fieldName = mapping.SourceFields[0];
+        if (sourceRecord.TryGetValue(fieldName, out var value) && !string.IsNullOrEmpty(value))
             return value;
 
         return mapping.DefaultValue;
     }
 
     /// <summary>
-    /// Evaluates a transform expression by replacing {attributeName} placeholders
-    /// with actual AD values.
+    /// Evaluates a transform expression by replacing {fieldName} placeholders
+    /// with actual source values.
     /// Examples:
     ///   "{givenName} {sn}"           -> "John Smith"
     ///   "{department} - {title}"     -> "Engineering - Developer"
     ///   "PC-{cn}"                    -> "PC-WORKSTATION01"
     /// </summary>
-    private static string? ApplyTransformExpression(Dictionary<string, string> adRecord, FieldMapping mapping)
+    private static string? ApplyTransformExpression(Dictionary<string, string> sourceRecord, FieldMapping mapping)
     {
-        var expression = mapping.TransformExpression!;
-        var result = PlaceholderRegex().Replace(expression, match =>
+        var result = PlaceholderRegex().Replace(mapping.TransformExpression!, match =>
         {
-            var attrName = match.Groups[1].Value;
-            if (adRecord.TryGetValue(attrName, out var value) && !string.IsNullOrEmpty(value))
-                return value;
-
-            return string.Empty;
+            var fieldName = match.Groups[1].Value;
+            return sourceRecord.TryGetValue(fieldName, out var value) && !string.IsNullOrEmpty(value)
+                ? value
+                : string.Empty;
         });
 
-        // If the entire result is empty/whitespace after substitution, use the default
-        if (string.IsNullOrWhiteSpace(result))
-            return mapping.DefaultValue;
-
-        return result.Trim();
+        return string.IsNullOrWhiteSpace(result) ? mapping.DefaultValue : result.Trim();
     }
 
     /// <summary>
-    /// Extracts all AD attribute names referenced in a transform expression.
-    /// Useful for the UI to auto-populate the AdAttributes list.
+    /// Extracts all source field names referenced in a transform expression.
+    /// Useful for the UI to auto-populate the SourceFields list.
     /// </summary>
     public static IReadOnlyList<string> ExtractAttributeNames(string transformExpression)
     {
@@ -142,7 +132,7 @@ public sealed partial class TransformEngine
     public static string? ValidateExpression(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))
-            return null; // Empty is fine (means direct mapping)
+            return null;
 
         var openBraces = expression.Count(c => c == '{');
         var closeBraces = expression.Count(c => c == '}');
@@ -152,7 +142,7 @@ public sealed partial class TransformEngine
 
         var matches = PlaceholderRegex().Matches(expression);
         if (matches.Count == 0 && (openBraces > 0 || closeBraces > 0))
-            return "Invalid placeholder syntax. Use {attributeName} format.";
+            return "Invalid placeholder syntax. Use {fieldName} format.";
 
         foreach (Match match in matches)
         {
@@ -164,8 +154,7 @@ public sealed partial class TransformEngine
     }
 
     /// <summary>
-    /// Evaluates a mapping against sample AD data for UI preview purposes.
-    /// Returns the computed value or null if nothing could be produced.
+    /// Evaluates a mapping against sample source data for UI preview purposes.
     /// </summary>
     public static string? PreviewTransform(Dictionary<string, string> sampleRecord, FieldMapping mapping)
     {
@@ -173,8 +162,8 @@ public sealed partial class TransformEngine
         {
             var result = PlaceholderRegex().Replace(mapping.TransformExpression, match =>
             {
-                var attrName = match.Groups[1].Value;
-                return sampleRecord.TryGetValue(attrName, out var value) && !string.IsNullOrEmpty(value)
+                var fieldName = match.Groups[1].Value;
+                return sampleRecord.TryGetValue(fieldName, out var value) && !string.IsNullOrEmpty(value)
                     ? value
                     : string.Empty;
             });
@@ -182,8 +171,8 @@ public sealed partial class TransformEngine
             return string.IsNullOrWhiteSpace(result) ? mapping.DefaultValue : result.Trim();
         }
 
-        if (mapping.AdAttributes.Count > 0 &&
-            sampleRecord.TryGetValue(mapping.AdAttributes[0], out var val) &&
+        if (mapping.SourceFields.Count > 0 &&
+            sampleRecord.TryGetValue(mapping.SourceFields[0], out var val) &&
             !string.IsNullOrEmpty(val))
         {
             return val;

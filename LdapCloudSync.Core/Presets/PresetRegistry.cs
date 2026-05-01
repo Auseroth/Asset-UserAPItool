@@ -1,7 +1,7 @@
 namespace LdapCloudSync.Core.Presets;
 
 using LdapCloudSync.Core.Models;
-
+using LdapCloudSync.Core.Presets;
 /// <summary>
 /// Registry of all known cloud provider presets. 
 /// Presets are immutable templates -- they are never modified at runtime.
@@ -43,21 +43,21 @@ public static class PresetRegistry
                 new FieldMapping
                 {
                     CloudField = "title",
-                    AdAttributes = ["cn"],
+                    SourceFields = ["cn"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "aid",
-                    AdAttributes = ["cn"],
+                    SourceFields = ["cn"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "notes",
-                    AdAttributes = ["description"],
+                    SourceFields = ["description"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
@@ -65,21 +65,21 @@ public static class PresetRegistry
                 new FieldMapping
                 {
                     CloudField = "details.Serial Number",
-                    AdAttributes = ["serialNumber"],
+                    SourceFields = ["serialNumber"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "details.Operating System",
-                    AdAttributes = ["operatingSystem"],
+                    SourceFields = ["operatingSystem"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "details.OS Version",
-                    AdAttributes = ["operatingSystemVersion"],
+                    SourceFields = ["operatingSystemVersion"],
                     TransformExpression = null,
                     DefaultValue = null
                 }
@@ -101,28 +101,28 @@ public static class PresetRegistry
                 new FieldMapping
                 {
                     CloudField = "name",
-                    AdAttributes = ["displayName"],
+                    SourceFields = ["displayName"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "email",
-                    AdAttributes = ["mail"],
+                    SourceFields = ["mail"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "title",
-                    AdAttributes = ["title"],
+                    SourceFields = ["title"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "employeeId",
-                    AdAttributes = ["employeeID"],
+                    SourceFields = ["employeeID"],
                     TransformExpression = null,
                     DefaultValue = null
                 }
@@ -155,28 +155,28 @@ public static class PresetRegistry
                 new FieldMapping
                 {
                     CloudField = "name",
-                    AdAttributes = ["cn"],
+                    SourceFields = ["cn"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "asset_tag",
-                    AdAttributes = ["cn"],
+                    SourceFields = ["cn"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "serial",
-                    AdAttributes = ["serialNumber"],
+                    SourceFields = ["serialNumber"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "notes",
-                    AdAttributes = ["description"],
+                    SourceFields = ["description"],
                     TransformExpression = null,
                     DefaultValue = null
                 }
@@ -198,49 +198,49 @@ public static class PresetRegistry
                 new FieldMapping
                 {
                     CloudField = "first_name",
-                    AdAttributes = ["givenName"],
+                    SourceFields = ["givenName"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "last_name",
-                    AdAttributes = ["sn"],
+                    SourceFields = ["sn"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "username",
-                    AdAttributes = ["sAMAccountName"],
+                    SourceFields = ["sAMAccountName"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "email",
-                    AdAttributes = ["mail"],
+                    SourceFields = ["mail"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "department",
-                    AdAttributes = ["department"],
+                    SourceFields = ["department"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "jobtitle",
-                    AdAttributes = ["title"],
+                    SourceFields = ["title"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "phone",
-                    AdAttributes = ["telephoneNumber"],
+                    SourceFields = ["telephoneNumber"],
                     TransformExpression = null,
                     DefaultValue = null
                 }
@@ -257,7 +257,7 @@ public static class PresetRegistry
         ContentType = "application/json",
         Assets = new PresetEndpoints
         {
-            // Endpoints are dynamic — built from Account + Module + Collection IDs at runtime
+            // Endpoints are dynamic - built from Account + Module + Collection IDs at runtime
             GetEndpoint = "",
             PostEndpoint = "",
             PutEndpoint = "",
@@ -309,21 +309,21 @@ public static class PresetRegistry
                 new FieldMapping
                 {
                     CloudField = "name",
-                    AdAttributes = ["cn"],
+                    SourceFields = ["cn"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "bio.ssn",
-                    AdAttributes = ["serialNumber"],
+                    SourceFields = ["serialNumber"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "description",
-                    AdAttributes = ["description"],
+                    SourceFields = ["description"],
                     TransformExpression = null,
                     DefaultValue = null
                 }
@@ -345,42 +345,42 @@ public static class PresetRegistry
                 new FieldMapping
                 {
                     CloudField = "name",
-                    AdAttributes = ["displayName"],
+                    SourceFields = ["displayName"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "email",
-                    AdAttributes = ["mail"],
+                    SourceFields = ["mail"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "title",
-                    AdAttributes = ["title"],
+                    SourceFields = ["title"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "phone",
-                    AdAttributes = ["telephoneNumber"],
+                    SourceFields = ["telephoneNumber"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "mobile_phone",
-                    AdAttributes = ["mobile"],
+                    SourceFields = ["mobile"],
                     TransformExpression = null,
                     DefaultValue = null
                 },
                 new FieldMapping
                 {
                     CloudField = "department",
-                    AdAttributes = ["department"],
+                    SourceFields = ["department"],
                     TransformExpression = null,
                     DefaultValue = null
                 }
@@ -430,7 +430,7 @@ public static class PresetRegistry
                     .Select(m => new FieldMapping
                     {
                         CloudField = m.CloudField,
-                        AdAttributes = [.. m.AdAttributes],
+                        SourceFields = [.. m.SourceFields],
                         TransformExpression = m.TransformExpression,
                         DefaultValue = m.DefaultValue
                     })
@@ -451,7 +451,7 @@ public static class PresetRegistry
                     .Select(m => new FieldMapping
                     {
                         CloudField = m.CloudField,
-                        AdAttributes = [.. m.AdAttributes],
+                        SourceFields = [.. m.SourceFields],
                         TransformExpression = m.TransformExpression,
                         DefaultValue = m.DefaultValue
                     })

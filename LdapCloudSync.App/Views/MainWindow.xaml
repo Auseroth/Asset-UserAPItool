@@ -7,6 +7,7 @@
         Width="1100" Height="750" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource SurfaceBrush}">
+    
 
     <Window.DataContext>
         <vm:MainViewModel />
@@ -23,7 +24,6 @@
         <Border Grid.Row="0" Background="{StaticResource CardBrush}" Padding="16,10"
                 BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
             <DockPanel>
-                <!-- Left: service status -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                     <TextBlock Text="Service:" FontWeight="SemiBold" Margin="0,0,8,0" VerticalAlignment="Center" />
                     <Ellipse VerticalAlignment="Center">
@@ -43,7 +43,6 @@
                             Style="{StaticResource SecondaryButton}" Padding="10,4" FontSize="11" />
                 </StackPanel>
 
-                <!-- Right: global actions -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
                     <Button Content="Test Sync (10)" Command="{Binding TriggerTestSyncCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" Padding="10,4" FontSize="11" />
@@ -57,12 +56,17 @@
 
         <!-- Main content: tabs -->
         <TabControl Grid.Row="1" Margin="16,12,16,0" Background="Transparent" BorderThickness="0">
-            <TabItem Header="Active Directory">
-                <views:AdSettingsView DataContext="{Binding AdSettingsVm}" />
+
+            <!-- Sources: replaces the old Active Directory tab.
+                 Contains all data sources: AD domains and cloud APIs. -->
+            <TabItem Header="Sources">
+                <views:SourcesView DataContext="{Binding SourcesVm}" />
             </TabItem>
+
             <TabItem Header="Cloud Targets">
                 <views:CloudTargetsView DataContext="{Binding CloudTargetsVm}" />
             </TabItem>
+
             <TabItem Header="Logs">
                 <views:LogViewerView DataContext="{Binding LogViewerVm}" />
             </TabItem>

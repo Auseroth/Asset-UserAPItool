@@ -12,9 +12,11 @@ namespace LdapCloudSync.Core.Providers;
 /// <summary>
 /// Base implementation for cloud API clients.
 /// Provides shared HTTP request building, JSON parsing, and standard authentication.
-/// Provider-specific clients (Reftab, etc.) inherit and override as needed.
+/// Implements both ICloudClient (push/write) and ICloudSourceClient (pull/read)
+/// so every provider automatically supports both target and source roles.
+/// Provider-specific clients inherit and override as needed.
 /// </summary>
-public abstract class BaseCloudClient : ICloudClient, IDisposable
+public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDisposable
 {
     protected readonly CloudTargetConfig _target;
     protected readonly HttpClient _httpClient;
@@ -88,6 +90,72 @@ public abstract class BaseCloudClient : ICloudClient, IDisposable
         }
     }
 
+    /// <summary>
+    /// Fetches records from the source API and returns flat string dictionaries
+    /// compatible with TransformEngine. Also returns the raw JSON for the editor window.
+    /// </summary>
+    public virtual async Task<(IReadOnlyList<Dictionary<string, string>> Records, string RawJson)> GetRecordsAsync(
+        string category,
+        string? filter = null,
+        int maxRecords = 0)
+    {
+        var categoryConfig = GetCategoryConfig(category);
+
+        if (string.IsNullOrEmpty(categoryConfig.GetEndpoint))
+            return ([], "No GET endpoint configured for this category.");
+
+        try
+        {
+            var endpoint = categoryConfig.GetEndpoint;
+
+            if (!string.IsNullOrEmpty(filter))
+                endpoint = endpoint.Contains('?')
+                    ? $"{endpoint}&{filter}"
+                    : $"{endpoint}?{filter}";
+
+            var request = BuildRequest(HttpMethod.Get, endpoint);
+            var response = await _httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            var rawJson = await response.Content.ReadAsStringAsync();
+
+            var doc = JsonNode.Parse(rawJson);
+            if (doc is null)
+                return ([], rawJson);
+
+            var items = ResolveItemsPath(doc, categoryConfig.ResponseItemsPath);
+            if (items is null)
+            {
+                _log.Warning("GetRecordsAsync: ResolveItemsPath returned null for path '{Path}' on {Target}",
+                    categoryConfig.ResponseItemsPath, _target.Name);
+                return ([], rawJson);
+            }
+
+            var records = new List<Dictionary<string, string>>();
+
+            foreach (var item in items)
+            {
+                if (item is not JsonObject obj) continue;
+                var record = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                FlattenJsonObjectToStrings(obj, record, prefix: null);
+                records.Add(record);
+            }
+
+            if (maxRecords > 0)
+                records = records.Take(maxRecords).ToList();
+
+            _log.Information("GetRecordsAsync: retrieved {Count} {Category} records from {Target}",
+                records.Count, category, _target.Name);
+
+            return (records, rawJson);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "GetRecordsAsync failed for {Category} on {Target}", category, _target.Name);
+            return ([], $"Error: {ex.Message}");
+        }
+    }
+
     public virtual async Task<SyncResult> PushRecordsAsync(
         string category,
         IReadOnlyList<Dictionary<string, object>> records)
@@ -95,22 +163,17 @@ public abstract class BaseCloudClient : ICloudClient, IDisposable
         var categoryConfig = GetCategoryConfig(category);
         var result = new SyncResult();
 
-        // Resolve which cloud field carries the UpdateMatchAdField value
-        // e.g., if UpdateMatchAdField="cn" and mapping cn->title, then updateMatchCloudKey="title"
         var updateMatchCloudKey = ResolveUpdateMatchCloudKey(categoryConfig);
         var hasUpdateMatch = !string.IsNullOrEmpty(updateMatchCloudKey)
                           && !string.IsNullOrEmpty(categoryConfig.UpdateMatchCloudField);
 
-        // Track failed POST records for PUT retry
         var failedRecords = new List<Dictionary<string, object>>();
 
         foreach (var record in records)
         {
             try
             {
-                // Allow subclasses to modify record before push
                 PreparePushRecord(categoryConfig, record);
-
                 await SendJsonAsync(HttpMethod.Post, categoryConfig.PostEndpoint, record);
                 result.Created++;
 
@@ -123,7 +186,6 @@ public abstract class BaseCloudClient : ICloudClient, IDisposable
             {
                 if (hasUpdateMatch)
                 {
-                    // Collect for PUT retry
                     failedRecords.Add(record);
                     _log.Information("POST failed for {Category} record, queued for PUT retry: {Error}",
                         category, ex.Message);
@@ -159,28 +221,22 @@ public abstract class BaseCloudClient : ICloudClient, IDisposable
                     {
                         result.Failed++;
                         result.Errors.Add($"Update match field '{updateMatchCloudKey}' is empty — cannot retry as PUT.");
-                        _log.Warning("PUT retry skipped: match field '{Field}' is empty in record", updateMatchCloudKey);
                         continue;
                     }
 
                     // Search fresh cloud records for a match
-                    var existingId = FindExistingRecordByUpdateMatch(
-                        existingRecords, categoryConfig, matchValue);
+                    var existingId = FindExistingRecordByUpdateMatch(existingRecords, categoryConfig, matchValue);
 
                     if (existingId is not null)
                     {
                         var endpoint = categoryConfig.PutEndpoint.Replace("{id}", existingId);
                         await SendJsonAsync(HttpMethod.Put, endpoint, record);
                         result.Updated++;
-                        _log.Information("PUT retry succeeded: {Field}='{Value}' -> {IdField}={Id}",
-                            categoryConfig.UpdateMatchCloudField, matchValue, categoryConfig.CloudIdField, existingId);
                     }
                     else
                     {
                         result.Failed++;
                         result.Errors.Add($"POST failed and no existing record matched '{updateMatchCloudKey}'='{matchValue}' for PUT retry.");
-                        _log.Warning("PUT retry: no match found for {Field}='{Value}' in {Count} existing records",
-                            categoryConfig.UpdateMatchCloudField, matchValue, existingRecords.Count);
                     }
                 }
                 catch (Exception ex)
@@ -207,22 +263,22 @@ public abstract class BaseCloudClient : ICloudClient, IDisposable
     /// </summary>
     protected string? ResolveUpdateMatchCloudKey(SyncCategoryConfig categoryConfig)
     {
-        if (string.IsNullOrEmpty(categoryConfig.UpdateMatchAdField))
+        if (string.IsNullOrEmpty(categoryConfig.UpdateMatchSourceField))
             return null;
 
         foreach (var mapping in categoryConfig.FieldMappings)
         {
-            if (mapping.AdAttributes.Any(a =>
-                string.Equals(a, categoryConfig.UpdateMatchAdField, StringComparison.OrdinalIgnoreCase)))
+            if (mapping.SourceFields.Any(f =>
+                string.Equals(f, categoryConfig.UpdateMatchSourceField, StringComparison.OrdinalIgnoreCase)))
             {
-                _log.Debug("Resolved UpdateMatchAdField '{AdField}' -> cloud key '{CloudField}'",
-                    categoryConfig.UpdateMatchAdField, mapping.CloudField);
+                _log.Debug("Resolved UpdateMatchSourceField '{SourceField}' -> cloud key '{CloudField}'",
+                    categoryConfig.UpdateMatchSourceField, mapping.CloudField);
                 return mapping.CloudField;
             }
         }
 
-        _log.Warning("UpdateMatchAdField '{AdField}' not found in any field mapping — PUT retry will be disabled",
-            categoryConfig.UpdateMatchAdField);
+        _log.Warning("UpdateMatchSourceField '{Field}' not found in any field mapping — PUT retry disabled",
+            categoryConfig.UpdateMatchSourceField);
         return null;
     }
 
@@ -534,46 +590,69 @@ public abstract class BaseCloudClient : ICloudClient, IDisposable
         }
     }
 
+    /// <summary>
+    /// Flattens a JsonObject into a flat string dictionary.
+    /// Nested objects use dot notation (e.g., "details.model").
+    /// Used by GetRecordsAsync to produce TransformEngine-compatible records.
+    /// </summary>
+    protected static void FlattenJsonObjectToStrings(
+        JsonObject obj,
+        Dictionary<string, string> result,
+        string? prefix)
+    {
+        foreach (var prop in obj)
+        {
+            var key = prefix is null ? prop.Key : $"{prefix}.{prop.Key}";
+
+            switch (prop.Value)
+            {
+                case JsonObject nested:
+                    FlattenJsonObjectToStrings(nested, result, key);
+                    break;
+                case JsonArray arr:
+                    result[key] = arr.ToJsonString();
+                    break;
+                case null:
+                    result[key] = string.Empty;
+                    break;
+                default:
+                    result[key] = prop.Value.ToString();
+                    break;
+            }
+        }
+    }
+
     protected SyncCategoryConfig GetCategoryConfig(string category)
     {
         return category.ToLowerInvariant() switch
         {
-            "assets" => _target.Assets,
+            "assets"            => _target.Assets,
             "users" or "loanees" => _target.Users,
             _ => throw new ArgumentException($"Unknown category: {category}", nameof(category))
         };
     }
 
-    protected static string Truncate(string value, int maxLength) =>
-        value.Length <= maxLength ? value : value[..maxLength] + "...";
-
-    public virtual void Dispose() => _httpClient.Dispose();
-
-    /// <summary>
-    /// Resolves a value from a push record, handling dotted keys like "details.objectsid"
-    /// that may have been nested into a sub-dictionary by PreparePushRecord.
-    /// Checks the flat key first, then looks inside nested dictionaries.
-    /// </summary>
     protected static string? ResolveRecordValue(Dictionary<string, object> record, string key)
     {
-        // Try flat key first (works for non-nested fields like "email", "title")
-        if (record.TryGetValue(key, out var directVal))
-            return directVal?.ToString();
+        if (record.TryGetValue(key, out var val))
+            return val?.ToString();
 
-        // Handle dotted keys like "details.objectsid" -> record["details"]["objectsid"]
-        var dotIndex = key.IndexOf('.');
-        if (dotIndex > 0)
+        // Handle "details.X" nested keys stored flat
+        foreach (var kvp in record)
         {
-            var parentKey = key[..dotIndex];
-            var childKey = key[(dotIndex + 1)..];
-
-            if (record.TryGetValue(parentKey, out var parentVal) && parentVal is Dictionary<string, object> nested)
-            {
-                if (nested.TryGetValue(childKey, out var nestedVal))
-                    return nestedVal?.ToString();
-            }
+            if (kvp.Key.Equals(key, StringComparison.OrdinalIgnoreCase))
+                return kvp.Value?.ToString();
         }
 
         return null;
+    }
+
+    protected static string Truncate(string text, int maxLength)
+        => text.Length <= maxLength ? text : text[..maxLength] + "…";
+
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

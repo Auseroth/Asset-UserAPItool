@@ -18,18 +18,27 @@ public sealed class CloudTargetViewModel : ViewModelBase
     internal List<string> _savedAssetsOUs = [];
     internal List<string> _savedUsersOUs = [];
 
-    public CloudTargetViewModel(CloudTargetConfig config, ConfigService configService)
+    private readonly SourcesViewModel _sourcesVm;
+    private readonly SourceFileService _sourceFileService;
+
+    public CloudTargetViewModel(
+        CloudTargetConfig config,
+        ConfigService configService,
+        SourcesViewModel sourcesVm,
+        SourceFileService sourceFileService)
     {
-        Config = config;
-        _configService = configService;
+        Config             = config;
+        _configService     = configService;
+        _sourcesVm         = sourcesVm;
+        _sourceFileService = sourceFileService;
         LoadFromConfig();
 
-        ApplyPresetCommand = new RelayCommand<string>(ApplyPreset);
-        DiscoverAssetFieldsCommand = new AsyncRelayCommand(DiscoverAssetFieldsAsync);
-        DiscoverUserFieldsCommand = new AsyncRelayCommand(DiscoverUserFieldsAsync);
+        ApplyPresetCommand            = new RelayCommand<string>(ApplyPreset);
+        DiscoverAssetFieldsCommand    = new AsyncRelayCommand(DiscoverAssetFieldsAsync);
+        DiscoverUserFieldsCommand     = new AsyncRelayCommand(DiscoverUserFieldsAsync);
         DiscoverAdComputerFieldsCommand = new AsyncRelayCommand(DiscoverAdComputerFieldsAsync);
-        DiscoverAdUserFieldsCommand = new AsyncRelayCommand(DiscoverAdUserFieldsAsync);
-        TestCloudConnectionCommand = new AsyncRelayCommand(TestCloudConnectionAsync);
+        DiscoverAdUserFieldsCommand   = new AsyncRelayCommand(DiscoverAdUserFieldsAsync);
+        TestCloudConnectionCommand    = new AsyncRelayCommand(TestCloudConnectionAsync);
         AddAssetMappingCommand = new RelayCommand(() =>
         {
             var m = new FieldMappingViewModel { SampleRecord = _sampleComputerRecord };
@@ -41,22 +50,27 @@ public sealed class CloudTargetViewModel : ViewModelBase
             UserMappings.Add(m);
         });
         RemoveAssetMappingCommand = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) AssetMappings.Remove(m); });
-        RemoveUserMappingCommand = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) UserMappings.Remove(m); });
-        RefreshCategoriesCommand = new AsyncRelayCommand(RefreshCategoriesAsync);
-        RefreshLocationsCommand = new AsyncRelayCommand(RefreshLocationsAsync);
+        RemoveUserMappingCommand  = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) UserMappings.Remove(m); });
+        RefreshCategoriesCommand  = new AsyncRelayCommand(RefreshCategoriesAsync);
+        RefreshLocationsCommand   = new AsyncRelayCommand(RefreshLocationsAsync);
         SelectAllAssetsOUsCommand = new RelayCommand<bool>(SelectAllAssetsOUs);
-        SelectAllUsersOUsCommand = new RelayCommand<bool>(SelectAllUsersOUs);
+        SelectAllUsersOUsCommand  = new RelayCommand<bool>(SelectAllUsersOUs);
         PreviewAssetMappingsCommand = new AsyncRelayCommand(PreviewAssetMappingsAsync);
-        PreviewUserMappingsCommand = new AsyncRelayCommand(PreviewUserMappingsAsync);
-        RunLocalTestSyncCommand = new AsyncRelayCommand(RunLocalTestSyncAsync);
+        PreviewUserMappingsCommand  = new AsyncRelayCommand(PreviewUserMappingsAsync);
+        RunLocalTestSyncCommand     = new AsyncRelayCommand(RunLocalTestSyncAsync);
+        RefreshSourceOptionsCommand = new RelayCommand(RefreshSourceOptions);
 
-        // Asset Panda discovery commands
-        RefreshApAccountsCommand = new AsyncRelayCommand(RefreshApAccountsAsync);
-        RefreshApModulesCommand = new AsyncRelayCommand(RefreshApModulesAsync);
-        RefreshApAssetsCollectionsCommand = new AsyncRelayCommand(() => RefreshApCollectionsAsync("assets"));
-        RefreshApUsersCollectionsCommand = new AsyncRelayCommand(() => RefreshApCollectionsAsync("users"));
-        RefreshApAssetColumnsCommand = new AsyncRelayCommand(() => RefreshApColumnsAsync("assets"));
-        RefreshApUserColumnsCommand = new AsyncRelayCommand(() => RefreshApColumnsAsync("users"));
+
+        RefreshApAccountsCommand           = new AsyncRelayCommand(RefreshApAccountsAsync);
+        RefreshApModulesCommand            = new AsyncRelayCommand(RefreshApModulesAsync);
+        RefreshApAssetsCollectionsCommand  = new AsyncRelayCommand(() => RefreshApCollectionsAsync("assets"));
+        RefreshApUsersCollectionsCommand   = new AsyncRelayCommand(() => RefreshApCollectionsAsync("users"));
+        RefreshApAssetColumnsCommand       = new AsyncRelayCommand(() => RefreshApColumnsAsync("assets"));
+        RefreshApUserColumnsCommand        = new AsyncRelayCommand(() => RefreshApColumnsAsync("users"));
+
+        RefreshPairedSourceOUsCommand = new AsyncRelayCommand(() => RefreshPairedSourceOUsAsync());
+
+        RefreshSourceOptions();
     }
 
     #region Identity & Preset
@@ -505,6 +519,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public ICommand PreviewAssetMappingsCommand { get; }
     public ICommand PreviewUserMappingsCommand { get; }
     public ICommand RunLocalTestSyncCommand { get; }
+    public ICommand RefreshSourceOptionsCommand { get; }
+    public ICommand RefreshPairedSourceOUsCommand { get; }
 
     // Asset Panda commands
     public ICommand RefreshApAccountsCommand { get; }
@@ -513,6 +529,100 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public ICommand RefreshApUsersCollectionsCommand { get; }
     public ICommand RefreshApAssetColumnsCommand { get; }
     public ICommand RefreshApUserColumnsCommand { get; }
+
+    #endregion
+
+    #region Source Selection
+
+    private string _sourceId = string.Empty;
+    public string SourceId
+    {
+        get => _sourceId;
+        set => SetProperty(ref _sourceId, value);
+    }
+
+    private string _selectedSourceDisplay = string.Empty;
+    public string SelectedSourceDisplay
+    {
+        get => _selectedSourceDisplay;
+        set
+        {
+            if (value is null) return; // Guard against null pushed by WPF during ItemsSource refresh
+            if (SetProperty(ref _selectedSourceDisplay, value))
+                SourceId = _sourcesVm.ResolveSourceId(value, _sourceFileService);
+        }
+    }
+
+    public ObservableCollection<string> AvailableSourceOptions { get; } = [];
+
+
+    private void RefreshSourceOptions()
+    {
+        var current = _selectedSourceDisplay;
+        AvailableSourceOptions.Clear();
+        foreach (var opt in _sourcesVm.GetAllSourceOptions(_sourceFileService))
+            AvailableSourceOptions.Add(opt);
+
+        _selectedSourceDisplay = AvailableSourceOptions.Contains(current)
+            ? current
+            : AvailableSourceOptions.Count > 0 ? AvailableSourceOptions[0] : string.Empty;
+
+        OnPropertyChanged(nameof(SelectedSourceDisplay));
+    }
+
+    /// <summary>Resolves the AD config for this target's source, or null if not AD.</summary>
+    private AdConnectionConfig? ResolveAdConfig()
+    {
+        if (SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
+            return null;
+
+        if (string.IsNullOrEmpty(SourceId))
+        {
+            var firstAd = _sourcesVm.Sources.FirstOrDefault(s => s.IsAdSource);
+            firstAd?.ApplyToConfig();
+            return firstAd?.Config.Ad;
+        }
+
+        var sourceVm = _sourcesVm.Sources.FirstOrDefault(s => s.Config.Id == SourceId);
+        if (sourceVm?.IsAdSource == true) { sourceVm.ApplyToConfig(); return sourceVm.Config.Ad; }
+        return null;
+    }
+
+    /// <summary>Resolves the cloud source VM for this target, or null if AD/file.</summary>
+    private CloudSourceViewModel? ResolveCloudSource()
+    {
+        if (string.IsNullOrEmpty(SourceId) ||
+            SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
+            return null;
+
+        var vm = _sourcesVm.Sources.FirstOrDefault(s => s.Config.Id == SourceId);
+        return vm?.IsCloudSource == true ? vm : null;
+    }
+
+    #endregion
+
+    #region Paired Source OU Refresh
+
+
+    private async Task RefreshPairedSourceOUsAsync()
+    {
+        CloudSourceViewModel? adSourceVm = string.IsNullOrEmpty(SourceId)
+            ? _sourcesVm.Sources.FirstOrDefault(s => s.IsAdSource)
+            : _sourcesVm.Sources.FirstOrDefault(s => s.Config.Id == SourceId && s.IsAdSource);
+
+        if (adSourceVm is null)
+        {
+            CloudConnectionStatus = "No AD source is paired with this target. Add one on the Sources tab.";
+            return;
+        }
+
+        CloudConnectionStatus = "Refreshing OUs from paired AD source...";
+        adSourceVm.ApplyToConfig();
+        await adSourceVm.DiscoverOUsAsync();
+        RebuildOUSelections(adSourceVm.DiscoveredComputerOUs, adSourceVm.DiscoveredUserOUs);
+        CloudConnectionStatus = $"OUs refreshed: {adSourceVm.DiscoveredComputerOUs.Count} computer OUs, " +
+                                $"{adSourceVm.DiscoveredUserOUs.Count} user OUs.";
+    }
 
     #endregion
 
@@ -909,10 +1019,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
         {
             AssetMappings.Add(new FieldMappingViewModel
             {
-                AdAttribute = mapping.AdAttributes.FirstOrDefault() ?? string.Empty,
-                CloudField = mapping.CloudField,
+                SourceField         = mapping.SourceFields.FirstOrDefault() ?? string.Empty,
+                CloudField          = mapping.CloudField,
                 TransformExpression = mapping.TransformExpression ?? string.Empty,
-                DefaultValue = mapping.DefaultValue ?? string.Empty
+                DefaultValue        = mapping.DefaultValue ?? string.Empty
             });
         }
 
@@ -933,10 +1043,10 @@ public sealed class CloudTargetViewModel : ViewModelBase
         {
             UserMappings.Add(new FieldMappingViewModel
             {
-                AdAttribute = mapping.AdAttributes.FirstOrDefault() ?? string.Empty,
-                CloudField = mapping.CloudField,
+                SourceField         = mapping.SourceFields.FirstOrDefault() ?? string.Empty,
+                CloudField          = mapping.CloudField,
                 TransformExpression = mapping.TransformExpression ?? string.Empty,
-                DefaultValue = mapping.DefaultValue ?? string.Empty
+                DefaultValue        = mapping.DefaultValue ?? string.Empty
             });
         }
 
@@ -976,58 +1086,58 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     private async Task DiscoverAdComputerFieldsAsync()
     {
+        var adConfig = ResolveAdConfig();
+        if (adConfig is null)
+        {
+            CloudConnectionStatus = "Source is not an AD source. Use 'Discover Source Fields' on the Sources tab.";
+            return;
+        }
         CloudConnectionStatus = "Discovering AD computer attributes...";
         try
         {
-            var adConfig = _configService.Current.ActiveDirectory;
             using var provider = new ActiveDirectoryProvider(adConfig);
             var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.Computer);
             DiscoveredAdComputerAttributes.Clear();
             foreach (var a in attrs) DiscoveredAdComputerAttributes.Add(a);
 
-            // Fetch one sample record for live mapping preview
             try
             {
-                var sampleRecords = await provider.QueryAsync(DirectoryObjectType.Computer, attrs.ToList(), maxResults: 1);
-                if (sampleRecords.Count > 0)
-                    SetAssetSampleRecord(sampleRecords[0]);
+                var sample = await provider.QueryAsync(DirectoryObjectType.Computer, attrs.ToList(), maxResults: 1);
+                if (sample.Count > 0) SetAssetSampleRecord(sample[0]);
             }
-            catch { /* Preview just won't have live data */ }
+            catch { }
 
             CloudConnectionStatus = $"Discovered {attrs.Count} AD computer attributes.";
         }
-        catch (Exception ex)
-        {
-            CloudConnectionStatus = $"AD discovery failed: {ex.Message}";
-        }
+        catch (Exception ex) { CloudConnectionStatus = $"AD discovery failed: {ex.Message}"; }
     }
 
     private async Task DiscoverAdUserFieldsAsync()
     {
+        var adConfig = ResolveAdConfig();
+        if (adConfig is null)
+        {
+            CloudConnectionStatus = "Source is not an AD source. Use 'Discover Source Fields' on the Sources tab.";
+            return;
+        }
         CloudConnectionStatus = "Discovering AD user attributes...";
         try
         {
-            var adConfig = _configService.Current.ActiveDirectory;
             using var provider = new ActiveDirectoryProvider(adConfig);
             var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.User);
             DiscoveredAdUserAttributes.Clear();
             foreach (var a in attrs) DiscoveredAdUserAttributes.Add(a);
 
-            // Fetch one sample record for live mapping preview
             try
             {
-                var sampleRecords = await provider.QueryAsync(DirectoryObjectType.User, attrs.ToList(), maxResults: 1);
-                if (sampleRecords.Count > 0)
-                    SetUserSampleRecord(sampleRecords[0]);
+                var sample = await provider.QueryAsync(DirectoryObjectType.User, attrs.ToList(), maxResults: 1);
+                if (sample.Count > 0) SetUserSampleRecord(sample[0]);
             }
-            catch { /* Preview just won't have live data */ }
+            catch { }
 
             CloudConnectionStatus = $"Discovered {attrs.Count} AD user attributes.";
         }
-        catch (Exception ex)
-        {
-            CloudConnectionStatus = $"AD discovery failed: {ex.Message}";
-        }
+        catch (Exception ex) { CloudConnectionStatus = $"AD discovery failed: {ex.Message}"; }
     }
 
     private async Task<IReadOnlyList<string>> DiscoverCloudFieldsAsync(string category)
@@ -1142,11 +1252,11 @@ public sealed class CloudTargetViewModel : ViewModelBase
         AssetsTargetCategoryId = Config.Assets.TargetCategoryId;
         SelectedLocationId = Config.Assets.TargetLocationId;
 
-        // Provider type — must load BEFORE auto-refresh which calls ApplyToConfig
+        // Provider type  must load BEFORE auto-refresh which calls ApplyToConfig
         ProviderType = Config.ProviderType;
 
         // Asset Panda discovery IDs
-        // Asset Panda discovery IDs — seed placeholder items BEFORE setting
+        // Asset Panda discovery IDs  seed placeholder items BEFORE setting
         // SelectedValue so WPF doesn't clear the binding when ItemsSource is empty.
         if (!string.IsNullOrEmpty(Config.ApAccountId))
         {
@@ -1185,6 +1295,11 @@ public sealed class CloudTargetViewModel : ViewModelBase
         {
             _ = LoadApDiscoveryDataAsync();
         }
+
+        // Source selection
+        SourceId = Config.SourceId;
+        _selectedSourceDisplay = _sourcesVm.GetDisplayOptionForSourceId(Config.SourceId, _sourceFileService);
+        OnPropertyChanged(nameof(SelectedSourceDisplay));
     }
 
     /// <summary>
@@ -1253,7 +1368,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
         catch
         {
-            // Silent — placeholders with IDs remain if API is unreachable
+            // Silent  placeholders with IDs remain if API is unreachable
         }
     }
 
@@ -1323,6 +1438,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.ApModuleId = ApModuleId;
         Config.ApAssetsCollectionId = ApAssetsCollectionId;
         Config.ApUsersCollectionId = ApUsersCollectionId;
+
+        // Source ID
+        Config.SourceId = SourceId;
     }
 
     private CloudTargetConfig BuildTargetConfig()
@@ -1344,8 +1462,21 @@ public sealed class CloudTargetViewModel : ViewModelBase
         {
             if (!string.IsNullOrWhiteSpace(AssetsAdFilterOverride))
                 return $"Filter: {AssetsAdFilterOverride}";
+
             var selected = GetSelectedAssetsOUs();
-            var globalFilter = _configService.Current.ActiveDirectory.ComputerFilter;
+
+            // For non-AD sources, show source name instead of AD filter
+            var cloudSource = ResolveCloudSource();
+            if (cloudSource is not null)
+                return selected.Count == 0
+                    ? $"Source: {cloudSource.Name}"
+                    : $"Source: {cloudSource.Name}  |  OUs: {selected.Count} selected";
+
+            var adConfig = ResolveAdConfig();
+            var globalFilter = adConfig?.ComputerFilter
+                ?? _configService.Current.Sources.FirstOrDefault(s => s.SourceType == SourceType.AD)?.Ad.ComputerFilter
+                ?? "(objectClass=computer)";
+
             return selected.Count == 0
                 ? $"Filter (global): {globalFilter}"
                 : $"Filter (global): {globalFilter}  |  OUs: {selected.Count} selected";
@@ -1366,9 +1497,18 @@ public sealed class CloudTargetViewModel : ViewModelBase
                 }));
                 return $"memberOf: {groups}";
             }
+
             if (!string.IsNullOrWhiteSpace(UsersAdFilterOverride))
                 return $"Filter: {UsersAdFilterOverride}";
-            var globalFilter = _configService.Current.ActiveDirectory.UserFilter;
+
+            var cloudSource = ResolveCloudSource();
+            if (cloudSource is not null) return $"Source: {cloudSource.Name}";
+
+            var adConfig = ResolveAdConfig();
+            var globalFilter = adConfig?.UserFilter
+                ?? _configService.Current.Sources.FirstOrDefault(s => s.SourceType == SourceType.AD)?.Ad.UserFilter
+                ?? "(&(objectClass=user)(objectCategory=person))";
+
             return selected.Count == 0
                 ? $"Filter (global): {globalFilter}"
                 : $"Filter (global): {globalFilter}  |  OUs: {selected.Count} selected";
@@ -1467,88 +1607,86 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     private async Task PreviewAssetMappingsAsync()
     {
-        CloudConnectionStatus = "Fetching first AD computer record for preview...";
+        CloudConnectionStatus = "Fetching source record for preview...";
         try
         {
             ApplyToConfig();
-            var globalAd = _configService.Current.ActiveDirectory;
             var categoryConfig = Config.Assets;
 
-            var requiredAttrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (!string.IsNullOrEmpty(categoryConfig.AdMatchField))
-                requiredAttrs.Add(categoryConfig.AdMatchField);
-            foreach (var mapping in categoryConfig.FieldMappings)
-            {
-                foreach (var attr in mapping.AdAttributes)
-                    requiredAttrs.Add(attr);
-                if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
-                    foreach (var attr in TransformEngine.ExtractAttributeNames(mapping.TransformExpression))
-                        requiredAttrs.Add(attr);
-            }
-
-            var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
-                globalAd, categoryConfig, DirectoryObjectType.Computer);
-
-            using var provider = new ActiveDirectoryProvider(effectiveAd);
-            var records = await provider.QueryAsync(
-                DirectoryObjectType.Computer, requiredAttrs.ToList(), maxResults: 1);
-
-            if (records.Count == 0)
-            {
-                CloudConnectionStatus = "No computer records found. Check AD source and filters.";
-                return;
-            }
+            var records = await ResolveSourcePreviewAsync("assets", categoryConfig, DirectoryObjectType.Computer);
+            if (records.Count == 0) { CloudConnectionStatus = "No records found. Check source configuration."; return; }
 
             SetAssetSampleRecord(records[0]);
-            CloudConnectionStatus = $"Preview loaded from: {records[0].GetValueOrDefault("cn", "(unknown)")}";
+            CloudConnectionStatus = $"Preview loaded from: {records[0].GetValueOrDefault("cn", records[0].Keys.FirstOrDefault() ?? "(unknown)")}";
+
         }
-        catch (Exception ex)
-        {
-            CloudConnectionStatus = $"Preview failed: {ex.Message}";
-        }
+        catch (Exception ex) { CloudConnectionStatus = $"Preview failed: {ex.Message}"; }
     }
 
     private async Task PreviewUserMappingsAsync()
     {
-        CloudConnectionStatus = "Fetching first AD user record for preview...";
+        CloudConnectionStatus = "Fetching source record for preview...";
         try
         {
             ApplyToConfig();
-            var globalAd = _configService.Current.ActiveDirectory;
             var categoryConfig = Config.Users;
 
-            var requiredAttrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (!string.IsNullOrEmpty(categoryConfig.AdMatchField))
-                requiredAttrs.Add(categoryConfig.AdMatchField);
-            foreach (var mapping in categoryConfig.FieldMappings)
-            {
-                foreach (var attr in mapping.AdAttributes)
-                    requiredAttrs.Add(attr);
-                if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
-                    foreach (var attr in TransformEngine.ExtractAttributeNames(mapping.TransformExpression))
-                        requiredAttrs.Add(attr);
-            }
-
-            var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
-                globalAd, categoryConfig, DirectoryObjectType.User);
-
-            using var provider = new ActiveDirectoryProvider(effectiveAd);
-            var records = await provider.QueryAsync(
-                DirectoryObjectType.User, requiredAttrs.ToList(), maxResults: 1);
-
-            if (records.Count == 0)
-            {
-                CloudConnectionStatus = "No user records found. Check AD source and filters.";
-                return;
-            }
+            var records = await ResolveSourcePreviewAsync("users", categoryConfig, DirectoryObjectType.User);
+            if (records.Count == 0) { CloudConnectionStatus = "No records found. Check source configuration."; return; }
 
             SetUserSampleRecord(records[0]);
-            CloudConnectionStatus = $"Preview loaded from: {records[0].GetValueOrDefault("sAMAccountName", "(unknown)")}";
+            CloudConnectionStatus = $"Preview loaded from: {records[0].GetValueOrDefault("sAMAccountName", records[0].Keys.FirstOrDefault() ?? "(unknown)")}";
         }
-        catch (Exception ex)
+        catch (Exception ex) { CloudConnectionStatus = $"Preview failed: {ex.Message}"; }
+    }
+
+    /// <summary>
+    /// Resolves a single preview record from whichever source this target is configured to use.
+    /// </summary>
+    private async Task<IReadOnlyList<Dictionary<string, string>>> ResolveSourcePreviewAsync(
+        string category,
+        SyncCategoryConfig categoryConfig,
+        DirectoryObjectType objectType)
+    {
+        // File source
+        if (SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
         {
-            CloudConnectionStatus = $"Preview failed: {ex.Message}";
+            var fileName = SourceId[SourceFileService.FileSourcePrefix.Length..];
+            var all = await _sourceFileService.ReadRecordsAsync(fileName, category);
+            return all.Take(1).ToList();
         }
+
+        // Cloud source
+        var cloudSource = ResolveCloudSource();
+        if (cloudSource is not null)
+        {
+            cloudSource.ApplyToConfig();
+            using var client = CloudSourceFactory.CreateClient(cloudSource.Config);
+            var filter = category == "assets" ? cloudSource.AssetsFilter : cloudSource.UsersFilter;
+            var (records, _) = await client.GetRecordsAsync(
+                category, string.IsNullOrWhiteSpace(filter) ? null : filter, maxRecords: 1);
+            return records;
+        }
+
+        // AD source (explicit or fallback)
+        var adConfig = ResolveAdConfig() ?? _configService.Current.Sources
+            .FirstOrDefault(s => s.SourceType == SourceType.AD)?.Ad;
+
+        if (adConfig is null) return [];
+
+        var requiredAttrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(categoryConfig.SourceMatchField)) requiredAttrs.Add(categoryConfig.SourceMatchField);
+        foreach (var mapping in categoryConfig.FieldMappings)
+        {
+            foreach (var f in mapping.SourceFields) requiredAttrs.Add(f);
+            if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
+                foreach (var f in TransformEngine.ExtractAttributeNames(mapping.TransformExpression))
+                    requiredAttrs.Add(f);
+        }
+
+        var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(adConfig, categoryConfig, objectType);
+        using var provider = new ActiveDirectoryProvider(effectiveAd);
+        return await provider.QueryAsync(objectType, requiredAttrs.ToList(), maxResults: 1);
     }
 
     #endregion
@@ -1559,59 +1697,44 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         try
         {
-            System.Windows.MessageBox.Show("Test Sync button clicked!", "Debug");
             CloudConnectionStatus = "Building test sync preview...";
-
             ApplyToConfig();
-            var config = _configService.Current;
             var target = Config;
 
-            var captures = new List<DryRunCapture>();
+            var captures   = new List<DryRunCapture>();
             var categories = new List<string>();
 
-            if (target.Assets.Enabled && target.Assets.FieldMappings.Count > 0)
-                categories.Add("assets");
-            if (target.Users.Enabled && target.Users.FieldMappings.Count > 0)
-                categories.Add("users");
+            if (target.Assets.Enabled && target.Assets.FieldMappings.Count > 0) categories.Add("assets");
+            if (target.Users.Enabled  && target.Users.FieldMappings.Count  > 0) categories.Add("users");
 
             if (categories.Count == 0)
             {
-                System.Windows.MessageBox.Show("No categories enabled or no mappings configured.", "Debug");
                 CloudConnectionStatus = "No categories enabled or no mappings configured.";
                 return;
             }
 
-            System.Windows.MessageBox.Show($"Processing {categories.Count} category(ies): {string.Join(", ", categories)}", "Debug");
-
             foreach (var category in categories)
             {
                 var categoryConfig = category == "assets" ? target.Assets : target.Users;
-                var objectType = category == "assets"
+                var objectType     = category == "assets"
                     ? DirectoryObjectType.Computer
                     : DirectoryObjectType.User;
 
-                var requiredAttributes = SyncOrchestrator.GetRequiredAdAttributesPublic(categoryConfig);
-                var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
-                    config.ActiveDirectory, categoryConfig, objectType);
+                var sourceRecords = await ResolveSourcePreviewAsync(category, categoryConfig, objectType);
 
-                using var provider = new ActiveDirectoryProvider(effectiveAd);
-                var adRecords = await provider.QueryAsync(objectType, requiredAttributes, maxResults: 1);
-
-                System.Windows.MessageBox.Show($"AD returned {adRecords.Count} record(s) for {category}", "Debug");
-
-                if (adRecords.Count == 0)
+                if (sourceRecords.Count == 0)
                 {
                     captures.Add(new DryRunCapture
                     {
-                        Method = "INFO",
+                        Method   = "INFO",
                         Endpoint = $"/{category}",
-                        JsonBody = $"\"No AD records found for {category}. Check search base and filters.\""
+                        JsonBody = $"\"No source records found for {category}. Check source configuration.\""
                     });
                     continue;
                 }
 
-                var engine = new TransformEngine();
-                var cloudRecords = engine.TransformBatch(adRecords, categoryConfig.FieldMappings);
+                var engine       = new TransformEngine();
+                var cloudRecords = engine.TransformBatch(sourceRecords, categoryConfig.FieldMappings);
 
                 using var client = CloudClientFactory.CreateClient(target);
                 if (client is BaseCloudClient baseClient)
@@ -1622,31 +1745,28 @@ public sealed class CloudTargetViewModel : ViewModelBase
                 }
 
                 if (objectType == DirectoryObjectType.Computer)
-                    SetAssetSampleRecord(adRecords[0]);
+                    SetAssetSampleRecord(sourceRecords[0]);
                 else
-                    SetUserSampleRecord(adRecords[0]);
+                    SetUserSampleRecord(sourceRecords[0]);
             }
-
-            System.Windows.MessageBox.Show($"Captured {captures.Count} request(s). Opening preview window...", "Debug");
 
             var previewVm = new TestSyncPreviewViewModel
             {
                 Summary = $"Target: {target.Name}  |  {captures.Count} request(s) captured  |  {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
             };
-            foreach (var c in captures)
-                previewVm.Captures.Add(c);
+            foreach (var c in captures) previewVm.Captures.Add(c);
 
             var dialog = new Views.TestSyncPreviewWindow
             {
                 DataContext = previewVm,
-                Owner = System.Windows.Application.Current.MainWindow
+                Owner       = System.Windows.Application.Current.MainWindow
             };
             dialog.ShowDialog();
 
             if (dialog.Confirmed)
             {
                 CloudConnectionStatus = "Proceeding with sync...";
-                _ = ExecuteConfirmedSyncAsync(config, target, categories);
+                _ = ExecuteConfirmedSyncAsync(categories);
             }
             else
             {
@@ -1664,37 +1784,29 @@ public sealed class CloudTargetViewModel : ViewModelBase
         }
     }
 
-    private async Task ExecuteConfirmedSyncAsync(
-        SyncConfig config,
-        CloudTargetConfig target,
-        List<string> categories)
+    private async Task ExecuteConfirmedSyncAsync(List<string> categories)
     {
         try
         {
+            var target = Config;
+
             foreach (var category in categories)
             {
                 var categoryConfig = category == "assets" ? target.Assets : target.Users;
-                var objectType = category == "assets"
+                var objectType     = category == "assets"
                     ? DirectoryObjectType.Computer
                     : DirectoryObjectType.User;
 
-                var requiredAttributes = SyncOrchestrator.GetRequiredAdAttributesPublic(categoryConfig);
-                var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
-                    config.ActiveDirectory, categoryConfig, objectType);
+                var sourceRecords = await ResolveSourcePreviewAsync(category, categoryConfig, objectType);
+                if (sourceRecords.Count == 0) continue;
 
-                using var provider = new ActiveDirectoryProvider(effectiveAd);
-                var adRecords = await provider.QueryAsync(objectType, requiredAttributes, maxResults: 1);
-
-                if (adRecords.Count == 0) continue;
-
-                var engine = new TransformEngine();
-                var cloudRecords = engine.TransformBatch(adRecords, categoryConfig.FieldMappings);
+                var engine       = new TransformEngine();
+                var cloudRecords = engine.TransformBatch(sourceRecords, categoryConfig.FieldMappings);
 
                 using var client = CloudClientFactory.CreateClient(target);
-                var result = await client.PushRecordsAsync(category, cloudRecords);
+                var result       = await client.PushRecordsAsync(category, cloudRecords);
 
                 CloudConnectionStatus = $"{category}: Created {result.Created}, Updated {result.Updated}, Failed {result.Failed}";
-
                 if (result.Errors.Count > 0)
                     CloudConnectionStatus += $" | Errors: {string.Join("; ", result.Errors)}";
             }
@@ -1706,6 +1818,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
     }
 
     #endregion
+
+
 }
 
 /// <summary>

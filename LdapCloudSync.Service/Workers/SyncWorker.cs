@@ -28,6 +28,7 @@ public sealed class SyncWorker : BackgroundService
     {
         _configService = configService;
         _log = Log.Logger;
+
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -173,8 +174,10 @@ public sealed class SyncWorker : BackgroundService
 
         var orchestrator = new SyncOrchestrator(
             _configService,
-            adConfig => new ActiveDirectoryProvider(adConfig, activityLogger),
+            adConfig => new ActiveDirectoryProvider(adConfig),
             targetConfig => CloudClientFactory.CreateClient(targetConfig, activityLogger),
+            source => CloudSourceFactory.CreateClient(source),
+            new SourceFileService(),
             activityLogger);
 
         if (maxRecords > 0)

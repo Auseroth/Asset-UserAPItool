@@ -1,29 +1,37 @@
 using LdapCloudSync.Core.Interfaces;
 using LdapCloudSync.Core.Models;
+using LdapCloudSync.Core.Providers;
 using Serilog;
 
 namespace LdapCloudSync.Core.Services;
 
 /// <summary>
-/// Coordinates a full sync cycle: query AD -> transform -> push to cloud.
-/// This is the core engine used by both the service (scheduled) and the app (on-demand).
+/// Coordinates a full sync cycle: resolve source -> query -> transform -> push to cloud target.
+/// Supports AD sources, cloud API sources, and file sources (saved JSON).
+/// The source for each target is determined by CloudTargetConfig.SourceId.
 /// </summary>
 public sealed class SyncOrchestrator : ISyncOrchestrator
 {
     private readonly ConfigService _configService;
     private readonly Func<AdConnectionConfig, IDirectoryProvider> _directoryFactory;
     private readonly Func<CloudTargetConfig, ICloudClient> _cloudFactory;
+    private readonly Func<CloudSourceConfig, ICloudSourceClient> _sourceFactory;
+    private readonly SourceFileService _sourceFileService;
     private readonly ILogger _log;
 
     public SyncOrchestrator(
         ConfigService configService,
         Func<AdConnectionConfig, IDirectoryProvider> directoryFactory,
         Func<CloudTargetConfig, ICloudClient> cloudFactory,
+        Func<CloudSourceConfig, ICloudSourceClient> sourceFactory,
+        SourceFileService sourceFileService,
         ILogger? logger = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _directoryFactory = directoryFactory ?? throw new ArgumentNullException(nameof(directoryFactory));
         _cloudFactory = cloudFactory ?? throw new ArgumentNullException(nameof(cloudFactory));
+        _sourceFactory = sourceFactory ?? throw new ArgumentNullException(nameof(sourceFactory));
+        _sourceFileService = sourceFileService ?? throw new ArgumentNullException(nameof(sourceFileService));
         _log = logger ?? Log.Logger;
     }
 
@@ -56,37 +64,18 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
         var target = config.CloudTargets.Find(t => t.Id == targetId);
 
         if (target is null)
-        {
-            return new SyncResult
-            {
-                Errors = [$"Cloud target '{targetId}' not found in configuration."]
-            };
-        }
+            return new SyncResult { Errors = [$"Cloud target '{targetId}' not found in configuration."] };
 
         if (!target.Enabled)
-        {
-            return new SyncResult
-            {
-                Errors = [$"Cloud target '{target.Name}' is disabled."]
-            };
-        }
+            return new SyncResult { Errors = [$"Cloud target '{target.Name}' is disabled."] };
 
         var categoryConfig = GetCategoryConfig(target, category);
+
         if (!categoryConfig.Enabled)
-        {
-            return new SyncResult
-            {
-                Errors = [$"{category} sync is disabled for target '{target.Name}'."]
-            };
-        }
+            return new SyncResult { Errors = [$"{category} sync is disabled for target '{target.Name}'."] };
 
         if (categoryConfig.FieldMappings.Count == 0)
-        {
-            return new SyncResult
-            {
-                Errors = [$"No field mappings configured for {category} on target '{target.Name}'."]
-            };
-        }
+            return new SyncResult { Errors = [$"No field mappings configured for {category} on target '{target.Name}'."] };
 
         var syncLabel = maxRecords > 0 ? $"TEST({maxRecords})" : "FULL";
         _log.Information("=== {SyncLabel} SYNC START: {Target} / {Category} ===",
@@ -94,56 +83,113 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
 
         try
         {
-            // Step 1: Determine which AD attributes we need
-            var requiredAttributes = GetRequiredAdAttributes(categoryConfig);
-            _log.Information("Requesting {Count} AD attributes: {Attributes}",
-                requiredAttributes.Count, string.Join(", ", requiredAttributes));
-
-            // Step 2: Query Active Directory (with per-target overrides)
+            // -- Step 1: Resolve source -------------------------------------
             cancellationToken.ThrowIfCancellationRequested();
-            var objectType = category.ToLowerInvariant() == "assets"
-                ? DirectoryObjectType.Computer
-                : DirectoryObjectType.User;
 
-            var effectiveAdConfig = BuildEffectiveAdConfig(config.ActiveDirectory, categoryConfig, objectType);
+            IReadOnlyList<Dictionary<string, string>> sourceRecords;
 
-            _log.Information("AD source for {Target}/{Category}: SearchBase={SearchBase}, Filter={Filter}",
-                target.Name, category,
-                objectType == DirectoryObjectType.Computer
-                    ? effectiveAdConfig.ComputerSearchBase
-                    : effectiveAdConfig.UserSearchBase,
-                objectType == DirectoryObjectType.Computer
-                    ? effectiveAdConfig.ComputerFilter
-                    : effectiveAdConfig.UserFilter);
+            var sourceId = target.SourceId;
+            var isFileSource = sourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal);
 
-            var adProvider = _directoryFactory(effectiveAdConfig);
-            var adRecords = await adProvider.QueryAsync(objectType, requiredAttributes, maxRecords);
-
-            if (adProvider is IDisposable disposable)
-                disposable.Dispose();
-
-            _log.Information("Retrieved {Count} records from AD", adRecords.Count);
-
-            if (adRecords.Count == 0)
+            if (isFileSource)
             {
-                _log.Warning("No AD records found for {Category}. Check your search base and filters.", category);
+                // File source: read from saved JSON in ProgramData/LDAPult/sourceFiles/
+                var fileName = sourceId[SourceFileService.FileSourcePrefix.Length..];
+                _log.Information("Source: file '{FileName}' for {Target}/{Category}", fileName, target.Name, category);
+
+                var fileRecords = await _sourceFileService.ReadRecordsAsync(fileName, category);
+                sourceRecords = maxRecords > 0 ? fileRecords.Take(maxRecords).ToList() : fileRecords;
+            }
+            else
+            {
+                // Resolve CloudSourceConfig (null sourceId falls back to first AD source)
+                var source = string.IsNullOrEmpty(sourceId)
+                    ? null
+                    : config.Sources.Find(s => s.Id == sourceId);
+
+                if (!string.IsNullOrEmpty(sourceId) && source is null)
+                {
+                    return new SyncResult
+                    {
+                        Errors = [$"Source '{sourceId}' not found. Check Sources tab configuration."]
+                    };
+                }
+
+                // Determine effective source type
+                var sourceType = source?.SourceType
+                    ?? (config.Sources.Any(s => s.SourceType == SourceType.AD) ? SourceType.AD : SourceType.Cloud);
+
+                if (sourceType == SourceType.Cloud && source is not null)
+                {
+                    // -- Cloud API source -----------------------------------
+                    _log.Information("Source: cloud '{SourceName}' for {Target}/{Category}",
+                        source.Name, target.Name, category);
+
+                    var readConfig = GetSourceReadConfig(source, category);
+                    var filter = string.IsNullOrWhiteSpace(readConfig.Filter) ? null : readConfig.Filter;
+
+                    using var sourceClient = _sourceFactory(source);
+                    var (records, _) = await sourceClient.GetRecordsAsync(category, filter, maxRecords);
+                    sourceRecords = records;
+
+                    _log.Information("Retrieved {Count} records from cloud source '{SourceName}'",
+                        records.Count, source.Name);
+                }
+                else
+                {
+                    // -- AD source ------------------------------------------
+                    var adConfig = source?.Ad
+                        ?? config.Sources.FirstOrDefault(s => s.SourceType == SourceType.AD)?.Ad;
+
+                    if (adConfig is null)
+                    {
+                        return new SyncResult
+                        {
+                            Errors = ["No AD source configured. Add an AD source on the Sources tab."]
+                        };
+                    }
+
+                    _log.Information("Source: AD '{SourceName}' for {Target}/{Category}",
+                        source?.Name ?? "(default)", target.Name, category);
+
+                    var objectType = category.ToLowerInvariant() == "assets"
+                        ? DirectoryObjectType.Computer
+                        : DirectoryObjectType.User;
+
+                    var requiredAttributes = GetRequiredSourceFields(categoryConfig);
+                    var effectiveAdConfig = BuildEffectiveAdConfig(adConfig, categoryConfig, objectType);
+
+                    var adProvider = _directoryFactory(effectiveAdConfig);
+                    sourceRecords = await adProvider.QueryAsync(objectType, requiredAttributes, maxRecords);
+
+                    if (adProvider is IDisposable disposable)
+                        disposable.Dispose();
+
+                    _log.Information("Retrieved {Count} records from AD source", sourceRecords.Count);
+                }
+            }
+
+            // -- Step 2: Guard empty 
+            if (sourceRecords.Count == 0)
+            {
+                _log.Warning("No source records found for {Category} on {Target}. Check source config.",
+                    category, target.Name);
                 return new SyncResult { Skipped = 0 };
             }
 
-            // Step 3: Transform AD records to cloud-ready records
+            //  Step 3: Transform 
             cancellationToken.ThrowIfCancellationRequested();
             var transformEngine = new TransformEngine(_log);
-            var cloudRecords = transformEngine.TransformBatch(adRecords, categoryConfig.FieldMappings);
-
+            var cloudRecords = transformEngine.TransformBatch(sourceRecords, categoryConfig.FieldMappings);
             _log.Information("Transformed {Count} records ready for push", cloudRecords.Count);
 
-            // Step 4: Push to cloud
+            //  Step 4: Push to target 
             cancellationToken.ThrowIfCancellationRequested();
             var client = _cloudFactory(target);
             var result = await client.PushRecordsAsync(category, cloudRecords);
 
             _log.Information(
-                "=== {SyncLabel} SYNC COMPLETE: {Target} / {Category} -- Created: {Created}, Updated: {Updated}, Failed: {Failed} ===",
+                "=== {SyncLabel} SYNC COMPLETE: {Target} / {Category} — Created: {Created}, Updated: {Updated}, Failed: {Failed} ===",
                 syncLabel, target.Name, category, result.Created, result.Updated, result.Failed);
 
             return result;
@@ -160,59 +206,64 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
         }
     }
 
+    //  Helpers 
+
     /// <summary>
-    /// Collects all unique AD attribute names needed by the field mappings,
-    /// including the AD match field and the update match field.
+    /// Collects all unique source field names needed by the field mappings,
+    /// including the source match field and update match field.
+    /// Works for both AD attribute names and cloud API field names.
     /// </summary>
-    private static List<string> GetRequiredAdAttributes(SyncCategoryConfig categoryConfig)
+    private static List<string> GetRequiredSourceFields(SyncCategoryConfig categoryConfig)
     {
-        var attributes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Always need the match field
-        if (!string.IsNullOrEmpty(categoryConfig.AdMatchField))
-            attributes.Add(categoryConfig.AdMatchField);
+        if (!string.IsNullOrEmpty(categoryConfig.SourceMatchField))
+            fields.Add(categoryConfig.SourceMatchField);
 
-        // Also need the update match field for PUT fallback
-        if (!string.IsNullOrEmpty(categoryConfig.UpdateMatchAdField))
-            attributes.Add(categoryConfig.UpdateMatchAdField);
+        if (!string.IsNullOrEmpty(categoryConfig.UpdateMatchSourceField))
+            fields.Add(categoryConfig.UpdateMatchSourceField);
 
         foreach (var mapping in categoryConfig.FieldMappings)
         {
-            // Add explicitly listed AD attributes
-            foreach (var attr in mapping.AdAttributes)
-            {
-                attributes.Add(attr);
-            }
+            foreach (var field in mapping.SourceFields)
+                fields.Add(field);
 
-            // Also extract any attributes referenced in the transform expression
             if (!string.IsNullOrWhiteSpace(mapping.TransformExpression))
             {
-                foreach (var attr in TransformEngine.ExtractAttributeNames(mapping.TransformExpression))
-                {
-                    attributes.Add(attr);
-                }
+                foreach (var field in TransformEngine.ExtractAttributeNames(mapping.TransformExpression))
+                    fields.Add(field);
             }
         }
 
-        return attributes.ToList();
+        return fields.ToList();
     }
 
     private static SyncCategoryConfig GetCategoryConfig(CloudTargetConfig target, string category)
     {
         return category.ToLowerInvariant() switch
         {
-            "assets" => target.Assets,
+            "assets"             => target.Assets,
             "users" or "loanees" => target.Users,
             _ => throw new ArgumentException($"Unknown sync category: {category}", nameof(category))
         };
     }
 
+    private static SourceReadConfig GetSourceReadConfig(CloudSourceConfig source, string category)
+    {
+        return category.ToLowerInvariant() switch
+        {
+            "assets"             => source.Assets,
+            "users" or "loanees" => source.Users,
+            _ => throw new ArgumentException($"Unknown sync category: {category}", nameof(category))
+        };
+    }
+
     /// <summary>
-    /// Builds an effective AD config by applying per-target overrides on top of the global config.
-    /// Supports multiple selected OUs or groups.
+    /// Builds an effective AD config by applying per-target overrides on top of the source AD config.
+    /// Supports multiple selected OUs or group-based memberOf filters.
     /// </summary>
     private static AdConnectionConfig BuildEffectiveAdConfig(
-        AdConnectionConfig globalConfig,
+        AdConnectionConfig sourceAdConfig,
         SyncCategoryConfig categoryConfig,
         DirectoryObjectType objectType)
     {
@@ -226,14 +277,12 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
         var isGroupMode = categoryConfig.AdSourceIsGroup && hasSearchOverride;
 
         if (!hasSearchOverride && !hasFilterOverride)
-            return globalConfig;
+            return sourceAdConfig;
 
-        // Group mode: build a memberOf filter from all selected groups
         if (isGroupMode)
         {
-            // Extract domain root from first group DN
             var dcIndex = overrides[0].IndexOf("DC=", StringComparison.OrdinalIgnoreCase);
-            var domainDn = dcIndex >= 0 ? overrides[0][dcIndex..] : globalConfig.UserSearchBase;
+            var domainDn = dcIndex >= 0 ? overrides[0][dcIndex..] : sourceAdConfig.UserSearchBase;
 
             string memberOfFilter;
             if (overrides.Count == 1)
@@ -248,21 +297,20 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
 
             return new AdConnectionConfig
             {
-                Domain = globalConfig.Domain,
-                Server = globalConfig.Server,
-                Port = globalConfig.Port,
-                UseSsl = globalConfig.UseSsl,
-                Username = globalConfig.Username,
-                EncryptedPassword = globalConfig.EncryptedPassword,
-                ComputerSearchBase = globalConfig.ComputerSearchBase,
+                Domain = sourceAdConfig.Domain,
+                Server = sourceAdConfig.Server,
+                Port = sourceAdConfig.Port,
+                UseSsl = sourceAdConfig.UseSsl,
+                Username = sourceAdConfig.Username,
+                EncryptedPassword = sourceAdConfig.EncryptedPassword,
+                ComputerSearchBase = sourceAdConfig.ComputerSearchBase,
                 UserSearchBase = domainDn,
                 AdditionalUserSearchBases = [],
-                ComputerFilter = globalConfig.ComputerFilter,
+                ComputerFilter = sourceAdConfig.ComputerFilter,
                 UserFilter = memberOfFilter
             };
         }
 
-        // OU mode: first selected is primary, rest are additional
         var primary = overrides[0];
         var additional = overrides.Skip(1).ToList();
 
@@ -270,57 +318,54 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
         {
             return new AdConnectionConfig
             {
-                Domain = globalConfig.Domain,
-                Server = globalConfig.Server,
-                Port = globalConfig.Port,
-                UseSsl = globalConfig.UseSsl,
-                Username = globalConfig.Username,
-                EncryptedPassword = globalConfig.EncryptedPassword,
+                Domain = sourceAdConfig.Domain,
+                Server = sourceAdConfig.Server,
+                Port = sourceAdConfig.Port,
+                UseSsl = sourceAdConfig.UseSsl,
+                Username = sourceAdConfig.Username,
+                EncryptedPassword = sourceAdConfig.EncryptedPassword,
                 ComputerSearchBase = primary,
-                UserSearchBase = globalConfig.UserSearchBase,
-                AdditionalUserSearchBases = globalConfig.AdditionalUserSearchBases,
+                UserSearchBase = sourceAdConfig.UserSearchBase,
+                AdditionalUserSearchBases = sourceAdConfig.AdditionalUserSearchBases,
                 ComputerFilter = hasFilterOverride
                     ? categoryConfig.AdFilterOverride.Trim()
-                    : globalConfig.ComputerFilter,
-                UserFilter = globalConfig.UserFilter
+                    : sourceAdConfig.ComputerFilter,
+                UserFilter = sourceAdConfig.UserFilter
             };
         }
 
-        // User OU mode
         return new AdConnectionConfig
         {
-            Domain = globalConfig.Domain,
-            Server = globalConfig.Server,
-            Port = globalConfig.Port,
-            UseSsl = globalConfig.UseSsl,
-            Username = globalConfig.Username,
-            EncryptedPassword = globalConfig.EncryptedPassword,
-            ComputerSearchBase = globalConfig.ComputerSearchBase,
+            Domain = sourceAdConfig.Domain,
+            Server = sourceAdConfig.Server,
+            Port = sourceAdConfig.Port,
+            UseSsl = sourceAdConfig.UseSsl,
+            Username = sourceAdConfig.Username,
+            EncryptedPassword = sourceAdConfig.EncryptedPassword,
+            ComputerSearchBase = sourceAdConfig.ComputerSearchBase,
             UserSearchBase = primary,
             AdditionalUserSearchBases = additional,
-            ComputerFilter = globalConfig.ComputerFilter,
+            ComputerFilter = sourceAdConfig.ComputerFilter,
             UserFilter = hasFilterOverride
                 ? categoryConfig.AdFilterOverride.Trim()
-                : globalConfig.UserFilter
+                : sourceAdConfig.UserFilter
         };
     }
 
+    //  Public static accessors (used by app for test sync preview) 
+
     /// <summary>
-    /// Public accessor for GetRequiredAdAttributes, used by the app for test sync preview.
+    /// Public accessor for GetRequiredSourceFields, used by the app for test sync preview.
     /// </summary>
     public static List<string> GetRequiredAdAttributesPublic(SyncCategoryConfig categoryConfig)
-    {
-        return GetRequiredAdAttributes(categoryConfig);
-    }
+        => GetRequiredSourceFields(categoryConfig);
 
     /// <summary>
     /// Public accessor for BuildEffectiveAdConfig, used by the app for test sync preview.
     /// </summary>
     public static AdConnectionConfig BuildEffectiveAdConfigPublic(
-        AdConnectionConfig globalConfig,
+        AdConnectionConfig adConfig,
         SyncCategoryConfig categoryConfig,
         DirectoryObjectType objectType)
-    {
-        return BuildEffectiveAdConfig(globalConfig, categoryConfig, objectType);
-    }
+        => BuildEffectiveAdConfig(adConfig, categoryConfig, objectType);
 }

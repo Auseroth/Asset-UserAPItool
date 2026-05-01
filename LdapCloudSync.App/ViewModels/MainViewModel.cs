@@ -10,36 +10,39 @@ namespace LdapCloudSync.App.ViewModels;
 public sealed class MainViewModel : ViewModelBase
 {
     private readonly ConfigService _configService;
+    private readonly SourceFileService _sourceFileService;
 
     public MainViewModel()
     {
-        _configService = App.ConfigService;
+        _configService   = App.ConfigService;
+        _sourceFileService = new SourceFileService();
 
-        AdSettingsVm = new AdSettingsViewModel(_configService);
-        CloudTargetsVm = new CloudTargetsViewModel(_configService);
-        LogViewerVm = new LogViewerViewModel();
+        SourcesVm      = new SourcesViewModel(_configService);
+        CloudTargetsVm = new CloudTargetsViewModel(_configService, SourcesVm, _sourceFileService);
+        LogViewerVm    = new LogViewerViewModel();
 
-        SaveCommand = new AsyncRelayCommand(SaveAsync);
-        CheckServiceStatusCommand = new AsyncRelayCommand(CheckServiceStatusAsync);
-        TriggerSyncCommand = new AsyncRelayCommand(TriggerSyncAsync, () => IsServiceRunning);
-        TriggerTestSyncCommand = new AsyncRelayCommand(TriggerTestSyncAsync);
+        SaveCommand                = new AsyncRelayCommand(SaveAsync);
+        CheckServiceStatusCommand  = new AsyncRelayCommand(CheckServiceStatusAsync);
+        TriggerSyncCommand         = new AsyncRelayCommand(TriggerSyncAsync, () => IsServiceRunning);
+        TriggerTestSyncCommand     = new AsyncRelayCommand(TriggerTestSyncAsync);
         ReloadServiceConfigCommand = new AsyncRelayCommand(ReloadServiceConfigAsync, () => IsServiceRunning);
 
-        AdSettingsVm.OUsDiscovered += RebuildTargetOUSelections;
+        // When any AD source discovers OUs, rebuild the target OU selectors
+        // for targets that use that source (or have no source assigned).
+        SourcesVm.OUsDiscovered += RebuildTargetOUSelections;
 
-        // Check service status on load with retries (service may still be starting)
         _ = CheckServiceStatusWithRetryAsync();
-
-        // Auto-discover OUs if AD is already configured (populates Cloud Target dropdowns)
         _ = AutoDiscoverOUsAsync();
     }
 
-    // Child ViewModels
-    public AdSettingsViewModel AdSettingsVm { get; }
-    public CloudTargetsViewModel CloudTargetsVm { get; }
-    public LogViewerViewModel LogViewerVm { get; }
+    // -- Child ViewModels 
 
-    // Service status
+    public SourcesViewModel      SourcesVm      { get; }
+    public CloudTargetsViewModel CloudTargetsVm { get; }
+    public LogViewerViewModel    LogViewerVm    { get; }
+
+    // -- Service status ----------------------------------------------------
+
     private bool _isServiceRunning;
     public bool IsServiceRunning
     {
@@ -68,16 +71,18 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _isBusy, value);
     }
 
-    // Commands
-    public ICommand SaveCommand { get; }
-    public ICommand CheckServiceStatusCommand { get; }
-    public ICommand TriggerSyncCommand { get; }
-    public ICommand TriggerTestSyncCommand { get; }
+    // -- Commands ----------------------------------------------------------
+
+    public ICommand SaveCommand                { get; }
+    public ICommand CheckServiceStatusCommand  { get; }
+    public ICommand TriggerSyncCommand         { get; }
+    public ICommand TriggerTestSyncCommand     { get; }
     public ICommand ReloadServiceConfigCommand { get; }
 
+    // -- OU discovery ------------------------------------------------------
+
     /// <summary>
-    /// Retries the service status check a few times on startup,
-    /// giving the service time to initialize its IPC pipe.
+    /// Retries on startup to give the service time to initialize its IPC pipe.
     /// </summary>
     private async Task CheckServiceStatusWithRetryAsync()
     {
@@ -85,44 +90,52 @@ public sealed class MainViewModel : ViewModelBase
         {
             await Task.Delay(attempt == 0 ? 500 : 2000);
             await CheckServiceStatusAsync();
-
-            if (IsServiceRunning)
-            {
-                StatusMessage = "Connected to service.";
-                return;
-            }
+            if (IsServiceRunning) { StatusMessage = "Connected to service."; return; }
         }
-
         StatusMessage = "Service not detected. Start it manually or check the installation.";
     }
 
     /// <summary>
-    /// Attempts to discover OUs on startup if AD credentials are already saved.
-    /// Silently fails if AD is not configured or unreachable.
+    /// Runs OU discovery for all configured AD sources on startup,
+    /// so target OU selectors are pre-populated if credentials are already saved.
     /// </summary>
     private async Task AutoDiscoverOUsAsync()
     {
-        try
+        foreach (var source in SourcesVm.Sources.Where(s => s.IsAdSource))
         {
-            var ad = _configService.Current.ActiveDirectory;
-            if (!string.IsNullOrWhiteSpace(ad.Domain) && !string.IsNullOrWhiteSpace(ad.EncryptedPassword))
+            try
             {
-                await AdSettingsVm.DiscoverOUsAsync();
-                RebuildTargetOUSelections();
+                if (!string.IsNullOrWhiteSpace(source.Config.Ad.Domain) &&
+                    !string.IsNullOrWhiteSpace(source.Config.Ad.EncryptedPassword))
+                {
+                    await source.DiscoverOUsAsync();
+                    RebuildTargetOUSelections(
+                        source.Config.Id,
+                        source.DiscoveredComputerOUs,
+                        source.DiscoveredUserOUs);
+                }
             }
-        }
-        catch
-        {
-            // Silent - OUs just won't be pre-populated until Test Connection
+            catch
+            {
+                // Silent — OUs just won't be pre-populated until Test Connection
+            }
         }
     }
 
-    private void RebuildTargetOUSelections()
+    /// <summary>
+    /// Called when any AD source fires OUsDiscovered.
+    /// Rebuilds OU selectors only for targets that reference this specific source,
+    /// or targets with no SourceId assigned (which default to the first AD source).
+    /// </summary>
+    private void RebuildTargetOUSelections(
+        string sourceId,
+        IEnumerable<string> computerOUs,
+        IEnumerable<string> userOUs)
     {
-        CloudTargetsVm.RebuildAllOUSelections(
-            AdSettingsVm.DiscoveredComputerOUs,
-            AdSettingsVm.DiscoveredUserOUs);
+        CloudTargetsVm.RebuildAllOUSelections(sourceId, computerOUs, userOUs);
     }
+
+    // -- Save --------------------------------------------------------------
 
     private async Task SaveAsync()
     {
@@ -131,13 +144,12 @@ public sealed class MainViewModel : ViewModelBase
             IsBusy = true;
             StatusMessage = "Saving configuration...";
 
-            AdSettingsVm.ApplyToConfig();
+            SourcesVm.ApplyToConfig();
             CloudTargetsVm.ApplyToConfig();
 
             _configService.Save();
             StatusMessage = "Configuration saved successfully.";
 
-            // Notify service to reload if it's running
             if (IsServiceRunning)
             {
                 var response = await IpcClient.ReloadConfigAsync();
@@ -146,24 +158,18 @@ public sealed class MainViewModel : ViewModelBase
                     : $"Saved, but service reload failed: {response.Message}";
             }
         }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Save failed: {ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        catch (Exception ex) { StatusMessage = $"Save failed: {ex.Message}"; }
+        finally { IsBusy = false; }
     }
+
+    // -- Service commands --------------------------------------------------
 
     private async Task CheckServiceStatusAsync()
     {
         try
         {
             var response = await IpcClient.SendCommandAsync(
-                new IpcCommand { Type = IpcCommandType.GetStatus },
-                timeoutMs: 3000);
-
+                new IpcCommand { Type = IpcCommandType.GetStatus }, timeoutMs: 3000);
             IsServiceRunning = response.Success;
             ServiceStatusText = response.Success ? "Running" : "Stopped";
         }
@@ -178,14 +184,29 @@ public sealed class MainViewModel : ViewModelBase
     {
         IsBusy = true;
         StatusMessage = "Triggering full sync...";
-
         var response = await IpcClient.TriggerSyncAsync();
         StatusMessage = response.Success
             ? $"Sync complete. {response.Data}"
             : $"Sync failed: {response.Message}";
-
         IsBusy = false;
     }
+
+    private async Task ReloadServiceConfigAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Reloading service configuration...";
+            var response = await IpcClient.ReloadConfigAsync();
+            StatusMessage = response.Success
+                ? "Service configuration reloaded."
+                : $"Reload failed: {response.Message}";
+        }
+        catch (Exception ex) { StatusMessage = $"Reload failed: {ex.Message}"; }
+        finally { IsBusy = false; }
+    }
+
+    // -- Test Sync (dry-run preview) ---------------------------------------
 
     private async Task TriggerTestSyncAsync()
     {
@@ -194,8 +215,7 @@ public sealed class MainViewModel : ViewModelBase
 
         try
         {
-            // Save current config state so dry-run uses latest values
-            AdSettingsVm.ApplyToConfig();
+            SourcesVm.ApplyToConfig();
             CloudTargetsVm.ApplyToConfig();
 
             var config = _configService.Current;
@@ -204,19 +224,17 @@ public sealed class MainViewModel : ViewModelBase
 
             if (enabledTargets.Count == 0)
             {
-                StatusMessage = "No enabled targets. Check the checkbox next to each target you want to sync.";
+                StatusMessage = "No enabled targets. Check the checkbox next to each target.";
                 return;
             }
 
             StatusMessage = $"Testing {enabledTargets.Count} enabled target(s)...";
 
-            // Dry-run each enabled target/category locally
             foreach (var target in enabledTargets)
             {
                 StatusMessage = $"Testing target: {target.Name}...";
 
                 var categoriesToTest = new List<(string Name, SyncCategoryConfig Config, DirectoryObjectType ObjType)>();
-
                 if (target.Assets.Enabled && target.Assets.FieldMappings.Count > 0)
                     categoriesToTest.Add(("assets", target.Assets, DirectoryObjectType.Computer));
                 if (target.Users.Enabled && target.Users.FieldMappings.Count > 0)
@@ -228,7 +246,7 @@ public sealed class MainViewModel : ViewModelBase
                     {
                         Method = "INFO",
                         Endpoint = $"[{target.Name}]",
-                        JsonBody = "\"No categories enabled or no field mappings configured for this target.\""
+                        JsonBody = "\"No categories enabled or no field mappings configured.\""
                     });
                     continue;
                 }
@@ -237,37 +255,41 @@ public sealed class MainViewModel : ViewModelBase
                 {
                     try
                     {
-                        var requiredAttributes = SyncOrchestrator.GetRequiredAdAttributesPublic(categoryConfig);
-                        var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(
-                            config.ActiveDirectory, categoryConfig, objectType);
+                        var sourceRecords = await ResolveSourceRecordsAsync(
+                            target, config, category, categoryConfig, objectType, maxRecords: 1);
 
-                        using var provider = new ActiveDirectoryProvider(effectiveAd);
-                        var adRecords = await provider.QueryAsync(objectType, requiredAttributes, maxResults: 1);
-
-                        if (adRecords.Count == 0)
+                        if (sourceRecords is null)
                         {
                             captures.Add(new DryRunCapture
                             {
-                                Method = "INFO",
+                                Method   = "ERROR",
                                 Endpoint = $"[{target.Name}] /{category}",
-                                JsonBody = $"\"No AD records found for {category}. Check search base and filters.\""
+                                JsonBody = $"\"Source not found for target '{target.Name}'. Check Sources tab.\""
                             });
                             continue;
                         }
 
-                        var engine = new TransformEngine();
-                        var cloudRecords = engine.TransformBatch(adRecords, categoryConfig.FieldMappings);
+                        if (sourceRecords.Count == 0)
+                        {
+                            captures.Add(new DryRunCapture
+                            {
+                                Method   = "INFO",
+                                Endpoint = $"[{target.Name}] /{category}",
+                                JsonBody = $"\"No source records found for {category}. Check source configuration.\""
+                            });
+                            continue;
+                        }
+
+                        var engine      = new TransformEngine();
+                        var cloudRecords = engine.TransformBatch(sourceRecords, categoryConfig.FieldMappings);
 
                         using var client = CloudClientFactory.CreateClient(target);
                         if (client is BaseCloudClient baseClient)
                         {
                             baseClient.DryRunMode = true;
                             await client.PushRecordsAsync(category, cloudRecords);
-
-                            // Tag each capture with the target name for clarity
                             foreach (var capture in baseClient.DryRunCaptures)
                                 capture.Endpoint = $"[{target.Name}] {capture.Endpoint}";
-
                             captures.AddRange(baseClient.DryRunCaptures);
                         }
                     }
@@ -275,7 +297,7 @@ public sealed class MainViewModel : ViewModelBase
                     {
                         captures.Add(new DryRunCapture
                         {
-                            Method = "ERROR",
+                            Method   = "ERROR",
                             Endpoint = $"[{target.Name}] /{category}",
                             JsonBody = $"\"{ex.Message}\""
                         });
@@ -289,13 +311,11 @@ public sealed class MainViewModel : ViewModelBase
                 return;
             }
 
-            // Show preview dialog
             var previewVm = new TestSyncPreviewViewModel
             {
                 Summary = $"{captures.Count} request(s) across {enabledTargets.Count} target(s)  |  {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
             };
-            foreach (var c in captures)
-                previewVm.Captures.Add(c);
+            foreach (var c in captures) previewVm.Captures.Add(c);
 
             var dialog = new Views.TestSyncPreviewWindow
             {
@@ -308,10 +328,9 @@ public sealed class MainViewModel : ViewModelBase
             {
                 if (!IsServiceRunning)
                 {
-                    StatusMessage = "Preview complete but service is not running — cannot execute sync. Start the service first.";
+                    StatusMessage = "Preview complete but service is not running - start the service first.";
                     return;
                 }
-
                 StatusMessage = "Sending test sync (10 records) to service...";
                 var response = await IpcClient.TriggerTestSyncAsync(maxRecords: 10);
                 StatusMessage = response.Success
@@ -323,35 +342,58 @@ public sealed class MainViewModel : ViewModelBase
                 StatusMessage = "Test sync cancelled.";
             }
         }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Test sync preview failed: {ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        catch (Exception ex) { StatusMessage = $"Test sync preview failed: {ex.Message}"; }
+        finally { IsBusy = false; }
     }
 
-    private async Task ReloadServiceConfigAsync()
+    /// <summary>
+    /// Resolves source records for a target, routing to AD, cloud API, or file source.
+    /// Returns null if the source cannot be found; returns an empty list if no records exist.
+    /// </summary>
+    private async Task<IReadOnlyList<Dictionary<string, string>>?> ResolveSourceRecordsAsync(
+        CloudTargetConfig target,
+        SyncConfig config,
+        string category,
+        SyncCategoryConfig categoryConfig,
+        DirectoryObjectType objectType,
+        int maxRecords)
     {
-        try
-        {
-            IsBusy = true;
-            StatusMessage = "Reloading service configuration...";
+        var sourceId = target.SourceId;
 
-            var response = await IpcClient.ReloadConfigAsync();
-            StatusMessage = response.Success
-                ? "Service configuration reloaded."
-                : $"Reload failed: {response.Message}";
-        }
-        catch (Exception ex)
+        // File source
+        if (sourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
         {
-            StatusMessage = $"Reload failed: {ex.Message}";
+            var fileName = sourceId[SourceFileService.FileSourcePrefix.Length..];
+            var records  = await _sourceFileService.ReadRecordsAsync(fileName, category);
+            return maxRecords > 0 ? records.Take(maxRecords).ToList() : records;
         }
-        finally
+
+        // Resolve configured source
+        var source = string.IsNullOrEmpty(sourceId)
+            ? null
+            : config.Sources.Find(s => s.Id == sourceId);
+
+        if (!string.IsNullOrEmpty(sourceId) && source is null)
+            return null;
+
+        if (source?.SourceType == SourceType.Cloud)
         {
-            IsBusy = false;
+            using var client = CloudSourceFactory.CreateClient(source);
+            var readConfig   = category == "assets" ? source.Assets : source.Users;
+            var filter       = string.IsNullOrWhiteSpace(readConfig.Filter) ? null : readConfig.Filter;
+            var (records, _) = await client.GetRecordsAsync(category, filter, maxRecords);
+            return records;
         }
+
+        // AD source (explicit or fallback)
+        var adConfig = source?.Ad
+            ?? config.Sources.FirstOrDefault(s => s.SourceType == SourceType.AD)?.Ad;
+
+        if (adConfig is null) return null;
+
+        var requiredAttributes = SyncOrchestrator.GetRequiredAdAttributesPublic(categoryConfig);
+        var effectiveAd        = SyncOrchestrator.BuildEffectiveAdConfigPublic(adConfig, categoryConfig, objectType);
+        using var provider     = new ActiveDirectoryProvider(effectiveAd);
+        return await provider.QueryAsync(objectType, requiredAttributes, maxRecords);
     }
 }
