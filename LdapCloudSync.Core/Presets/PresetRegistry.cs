@@ -35,8 +35,10 @@ public static class PresetRegistry
             CloudIdField = "aid",
             AdMatchField = "cn",
             CloudMatchField = "title",
-            UpdateMatchAdField = "cn",
-            UpdateMatchCloudField = "title",
+            UpdateMatchAdField = string.Empty,
+            UpdateMatchCloudField = string.Empty,
+            SecondaryUpdateMatchAdField = string.Empty,
+            SecondaryUpdateMatchCloudField = string.Empty,
             DefaultMappings =
             [
                 // Top-level Reftab asset fields
@@ -426,6 +428,8 @@ public static class PresetRegistry
                 CloudMatchField = preset.Assets.CloudMatchField,
                 UpdateMatchAdField = preset.Assets.UpdateMatchAdField,
                 UpdateMatchCloudField = preset.Assets.UpdateMatchCloudField,
+                SecondaryUpdateMatchSourceField = preset.Assets.SecondaryUpdateMatchAdField,
+                SecondaryUpdateMatchCloudField = preset.Assets.SecondaryUpdateMatchCloudField,
                 FieldMappings = preset.Assets.DefaultMappings
                     .Select(m => new FieldMapping
                     {
@@ -447,6 +451,8 @@ public static class PresetRegistry
                 CloudMatchField = preset.Users.CloudMatchField,
                 UpdateMatchAdField = preset.Users.UpdateMatchAdField,
                 UpdateMatchCloudField = preset.Users.UpdateMatchCloudField,
+                SecondaryUpdateMatchSourceField = preset.Users.SecondaryUpdateMatchAdField,
+                SecondaryUpdateMatchCloudField = preset.Users.SecondaryUpdateMatchCloudField,
                 FieldMappings = preset.Users.DefaultMappings
                     .Select(m => new FieldMapping
                     {

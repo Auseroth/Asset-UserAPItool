@@ -164,8 +164,9 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
         var result = new SyncResult();
 
         var updateMatchCloudKey = ResolveUpdateMatchCloudKey(categoryConfig);
+        var secondaryUpdateMatchCloudKey = ResolveUpdateMatchCloudKey(categoryConfig, categoryConfig.SecondaryUpdateMatchSourceField);
         var hasUpdateMatch = !string.IsNullOrEmpty(updateMatchCloudKey)
-                          && !string.IsNullOrEmpty(categoryConfig.UpdateMatchCloudField);
+                          || !string.IsNullOrEmpty(secondaryUpdateMatchCloudKey);
 
         var failedRecords = new List<Dictionary<string, object>>();
 
@@ -177,9 +178,9 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
                 await SendJsonAsync(HttpMethod.Post, categoryConfig.PostEndpoint, record);
                 result.Created++;
 
-                var matchValue = record.TryGetValue(updateMatchCloudKey ?? "", out var mv)
-                    ? mv?.ToString() ?? "(unknown)"
-                    : "(unknown)";
+                    var matchValue = !string.IsNullOrEmpty(updateMatchCloudKey) && record.TryGetValue(updateMatchCloudKey, out var mv)
+                ? mv?.ToString() ?? "(unknown)"
+                : "(unknown)";
                 _log.Debug("Created {Category} record: {MatchValue}", category, matchValue);
             }
             catch (Exception ex)
@@ -205,9 +206,8 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
             _log.Information("Retrying {Count} failed POST(s) as PUT for {Category}",
                 failedRecords.Count, category);
 
-            var existingRecords = await FetchExistingRecordsAsync(categoryConfig);
-            _log.Information("Fetched {Count} existing {Category} records for PUT retry matching",
-                existingRecords.Count, category);
+            List<JsonObject> existingRecords = [];
+            var existingRecordsFetched = false;
 
             foreach (var record in failedRecords)
             {
@@ -215,7 +215,28 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
                 {
                     // Get the value from the cloud record that originated from the AD match field
                     // Handle "details.X" keys that were nested by PreparePushRecord
-                    var matchValue = ResolveRecordValue(record, updateMatchCloudKey!);
+                    // If the failed record already has the cloud ID field, retry directly first.
+                    var directId = ResolveRecordValue(record, categoryConfig.CloudIdField);
+                    if (!string.IsNullOrWhiteSpace(directId))
+                    {
+                        try
+                        {
+                            var directEndpoint = categoryConfig.PutEndpoint.Replace("{id}", directId);
+                            await SendJsonAsync(HttpMethod.Put, directEndpoint, record);
+                            result.Updated++;
+                            continue;
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.Warning(ex,
+                                "Direct PUT retry failed for {Category} using {IdField}={IdValue}; falling back to lookup",
+                                category, categoryConfig.CloudIdField, directId);
+                        }
+                    }
+
+                    // Handle "details.X" keys that were nested by PreparePushRecord.
+                    var primaryMatchField = updateMatchCloudKey;
+                    var matchValue = ResolveRecordValue(record, primaryMatchField!);
 
                     if (string.IsNullOrEmpty(matchValue))
                     {
@@ -225,7 +246,30 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
                     }
 
                     // Search fresh cloud records for a match
-                    var existingId = FindExistingRecordByUpdateMatch(existingRecords, categoryConfig, matchValue);
+                    var matchedField = primaryMatchField;
+                    if (!existingRecordsFetched)
+                    {
+                        existingRecords = await FetchExistingRecordsAsync(categoryConfig);
+                        existingRecordsFetched = true;
+                        _log.Information("Fetched {Count} existing {Category} records for PUT retry matching",
+                            existingRecords.Count, category);
+                    }
+
+                    var existingId = FindExistingRecordByUpdateMatch(existingRecords, categoryConfig, matchedField, matchValue);
+
+                    if (existingId is null && !string.IsNullOrEmpty(secondaryUpdateMatchCloudKey))
+                    {
+                        var secondaryMatchValue = ResolveRecordValue(record, secondaryUpdateMatchCloudKey);
+                        if (!string.IsNullOrWhiteSpace(secondaryMatchValue))
+                        {
+                            existingId = FindExistingRecordByUpdateMatch(existingRecords, categoryConfig, secondaryUpdateMatchCloudKey, secondaryMatchValue);
+                            if (existingId is not null)
+                            {
+                                matchedField = secondaryUpdateMatchCloudKey;
+                                matchValue = secondaryMatchValue;
+                            }
+                        }
+                    }
 
                     if (existingId is not null)
                     {
@@ -236,7 +280,7 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
                     else
                     {
                         result.Failed++;
-                        result.Errors.Add($"POST failed and no existing record matched '{updateMatchCloudKey}'='{matchValue}' for PUT retry.");
+                        result.Errors.Add($"POST failed and no existing record matched '{matchedField}'='{matchValue}' for PUT retry.");
                     }
                 }
                 catch (Exception ex)
@@ -283,6 +327,29 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
     }
 
     /// <summary>
+    /// Resolves the cloud field key for a specified source match field.
+    /// </summary>
+    protected string? ResolveUpdateMatchCloudKey(SyncCategoryConfig categoryConfig, string? sourceField)
+    {
+        if (string.IsNullOrEmpty(sourceField))
+            return null;
+
+        foreach (var mapping in categoryConfig.FieldMappings)
+        {
+            if (mapping.SourceFields.Any(f =>
+                string.Equals(f, sourceField, StringComparison.OrdinalIgnoreCase)))
+            {
+                _log.Debug("Resolved UpdateMatchSourceField '{SourceField}' -> cloud key '{CloudField}'",
+                    sourceField, mapping.CloudField);
+                return mapping.CloudField;
+            }
+        }
+
+        _log.Warning("UpdateMatchSourceField '{Field}' not found in any field mapping; PUT retry disabled", sourceField);
+        return null;
+    }
+
+    /// <summary>
     /// Searches existing cloud records for one where UpdateMatchCloudField equals the given value,
     /// and returns the CloudIdField from that record.
     /// Handles dotted field paths like "details.objectsid" by traversing nested objects.
@@ -297,6 +364,38 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
         foreach (var record in existingRecords)
         {
             var cloudVal = ResolveJsonValue(record, matchField);
+
+            if (cloudVal is not null
+                && string.Equals(cloudVal, matchValue, StringComparison.OrdinalIgnoreCase))
+            {
+                if (record.TryGetPropertyValue(categoryConfig.CloudIdField, out var idVal) && idVal is not null)
+                    return idVal.ToString();
+
+                var keys = string.Join(", ", record.Select(p => p.Key));
+                _log.Warning(
+                    "Update match found for '{Value}' but ID field '{IdField}' not present. Available: [{Keys}]",
+                    matchValue, categoryConfig.CloudIdField, keys);
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Searches existing cloud records for one where the specified cloud field equals the given value,
+    /// and returns the CloudIdField from that record.
+    /// Handles dotted field paths like "details.objectsid" by traversing nested objects.
+    /// </summary>
+    protected virtual string? FindExistingRecordByUpdateMatch(
+        List<JsonObject> existingRecords,
+        SyncCategoryConfig categoryConfig,
+        string lookupField,
+        string matchValue)
+    {
+        foreach (var record in existingRecords)
+        {
+            var cloudVal = ResolveJsonValue(record, lookupField);
 
             if (cloudVal is not null
                 && string.Equals(cloudVal, matchValue, StringComparison.OrdinalIgnoreCase))

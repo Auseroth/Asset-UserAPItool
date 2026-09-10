@@ -435,30 +435,52 @@
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0">
                     <StackPanel>
                         <TextBlock Text="Update: Fields to Match" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"
-                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates." />
+                                   ToolTip="Primary field pair is required; secondary field pair is optional and used only as a fallback." />
                         <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="30" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="Source Field" Style="{StaticResource FieldLabel}" />
+                            <StackPanel Grid.Row="0" Grid.Column="0">
+                                <TextBlock Text="Primary Source Field (required)" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding AssetsUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DiscoveredAdComputerAttributes}"
                                           IsEditable="True" FontSize="11"
-                                          ToolTip="Source field to match (e.g., cn, serial_number)" />
+                                          ToolTip="Required primary source field to match (e.g., cn, serial_number)" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center"
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="=" HorizontalAlignment="Center"
                                        VerticalAlignment="Bottom" Margin="0,0,0,6"
                                        FontWeight="Bold" FontSize="14" />
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Cloud Field" Style="{StaticResource FieldLabel}" />
+                            <StackPanel Grid.Row="0" Grid.Column="2">
+                                <TextBlock Text="Primary Cloud Field (required)" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding AssetsUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DiscoveredAssetCloudFields}"
                                           IsEditable="True" FontSize="11"
-                                          ToolTip="Cloud field to compare against (e.g., title, name)" />
+                                          ToolTip="Required primary cloud field to compare against (e.g., title, name)" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,8,0,0">
+                                <TextBlock Text="Secondary Source Field (optional)" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding AssetsSecondaryUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredAdComputerAttributes}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="Optional secondary source field used only if primary retry matching fails" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="=" HorizontalAlignment="Center"
+                                       VerticalAlignment="Bottom" Margin="0,0,0,6"
+                                       FontWeight="Bold" FontSize="14" />
+                            <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,8,0,0">
+                                <TextBlock Text="Secondary Cloud Field (optional)" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding AssetsSecondaryUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredAssetCloudFields}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="Optional secondary cloud field used only if primary retry matching fails" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -702,30 +724,52 @@
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0">
                     <StackPanel>
                         <TextBlock Text="Update: Fields to Match" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"
-                                   ToolTip="Pair of fields used to look up existing cloud records for PUT updates." />
+                                   ToolTip="Primary field pair is required; secondary field pair is optional and used only as a fallback." />
                         <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="30" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="Source Field" Style="{StaticResource FieldLabel}" />
+                            <StackPanel Grid.Row="0" Grid.Column="0">
+                                <TextBlock Text="Primary Source Field (required)" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding UsersUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DiscoveredAdUserAttributes}"
                                           IsEditable="True" FontSize="11"
-                                          ToolTip="Source field to match (e.g., mail, sAMAccountName)" />
+                                          ToolTip="Required primary source field to match (e.g., mail, sAMAccountName)" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="=" HorizontalAlignment="Center"
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="=" HorizontalAlignment="Center"
                                        VerticalAlignment="Bottom" Margin="0,0,0,6"
                                        FontWeight="Bold" FontSize="14" />
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Cloud Field" Style="{StaticResource FieldLabel}" />
+                            <StackPanel Grid.Row="0" Grid.Column="2">
+                                <TextBlock Text="Primary Cloud Field (required)" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Text="{Binding UsersUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
                                           ItemsSource="{Binding DiscoveredUserCloudFields}"
                                           IsEditable="True" FontSize="11"
-                                          ToolTip="Cloud field to compare against (e.g., email, name)" />
+                                          ToolTip="Required primary cloud field to compare against (e.g., email, name)" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,8,0,0">
+                                <TextBlock Text="Secondary Source Field (optional)" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding UsersSecondaryUpdateMatchAdField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredAdUserAttributes}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="Optional secondary source field used only if primary retry matching fails" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="=" HorizontalAlignment="Center"
+                                       VerticalAlignment="Bottom" Margin="0,0,0,6"
+                                       FontWeight="Bold" FontSize="14" />
+                            <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,8,0,0">
+                                <TextBlock Text="Secondary Cloud Field (optional)" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Text="{Binding UsersSecondaryUpdateMatchCloudField, UpdateSourceTrigger=PropertyChanged}"
+                                          ItemsSource="{Binding DiscoveredUserCloudFields}"
+                                          IsEditable="True" FontSize="11"
+                                          ToolTip="Optional secondary cloud field used only if primary retry matching fails" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>

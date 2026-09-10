@@ -152,6 +152,12 @@ public sealed class SyncCategoryConfig
     /// <summary>Cloud field used for PUT fallback matching.</summary>
     public string UpdateMatchCloudField { get; set; } = string.Empty;
 
+    /// <summary>Secondary source field used for PUT retry fallback matching.</summary>
+    public string SecondaryUpdateMatchSourceField { get; set; } = string.Empty;
+
+    /// <summary>Secondary cloud field used for PUT retry fallback matching.</summary>
+    public string SecondaryUpdateMatchCloudField { get; set; } = string.Empty;
+
     /// <summary>
     /// Field mappings: source field -> cloud field, with optional transform.
     /// SourceFields may be AD attribute names or cloud API field names depending on source type.

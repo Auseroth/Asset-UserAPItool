@@ -102,10 +102,11 @@ public sealed class ReftabClient : BaseCloudClient
 
     /// <summary>
     /// Reftab requires:
-    /// - Assets: cid, clid injected; details.* nested into details object
+    /// - Assets: cid, clid injected; details.* and status.* nested into objects
     /// - Loanees: "disabled" hardcoded to false; details always present (empty {} if no custom fields)
-    /// - Fields prefixed with "details." are nested into a "details" object
+    /// - Fields prefixed with "details." or "status." are nested into matching objects
     ///   e.g., "details.Serial Number" becomes { "details": { "Serial Number": "ABC123" } }
+    ///         "status.name" becomes { "status": { "name": "Available" } }
     /// </summary>
     protected override void PreparePushRecord(SyncCategoryConfig categoryConfig, Dictionary<string, object> record)
     {

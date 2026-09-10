@@ -274,6 +274,20 @@ public sealed class CloudTargetViewModel : ViewModelBase
         set => SetProperty(ref _assetsUpdateMatchCloudField, value);
     }
 
+    private string _assetsSecondaryUpdateMatchAdField = string.Empty;
+    public string AssetsSecondaryUpdateMatchAdField
+    {
+        get => _assetsSecondaryUpdateMatchAdField;
+        set => SetProperty(ref _assetsSecondaryUpdateMatchAdField, value);
+    }
+
+    private string _assetsSecondaryUpdateMatchCloudField = string.Empty;
+    public string AssetsSecondaryUpdateMatchCloudField
+    {
+        get => _assetsSecondaryUpdateMatchCloudField;
+        set => SetProperty(ref _assetsSecondaryUpdateMatchCloudField, value);
+    }
+
     #endregion
 
     #region Users Config
@@ -380,6 +394,20 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         get => _usersUpdateMatchCloudField;
         set => SetProperty(ref _usersUpdateMatchCloudField, value);
+    }
+
+    private string _usersSecondaryUpdateMatchAdField = string.Empty;
+    public string UsersSecondaryUpdateMatchAdField
+    {
+        get => _usersSecondaryUpdateMatchAdField;
+        set => SetProperty(ref _usersSecondaryUpdateMatchAdField, value);
+    }
+
+    private string _usersSecondaryUpdateMatchCloudField = string.Empty;
+    public string UsersSecondaryUpdateMatchCloudField
+    {
+        get => _usersSecondaryUpdateMatchCloudField;
+        set => SetProperty(ref _usersSecondaryUpdateMatchCloudField, value);
     }
 
     #endregion
@@ -1354,6 +1382,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         // Update match fields for PUT fallback
         AssetsUpdateMatchAdField = Config.Assets.UpdateMatchAdField;
         AssetsUpdateMatchCloudField = Config.Assets.UpdateMatchCloudField;
+        AssetsSecondaryUpdateMatchAdField = Config.Assets.SecondaryUpdateMatchSourceField;
+        AssetsSecondaryUpdateMatchCloudField = Config.Assets.SecondaryUpdateMatchCloudField;
 
         AssetMappings.Clear();
         foreach (var m in Config.Assets.FieldMappings)
@@ -1375,6 +1405,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         // Update match fields for PUT fallback
         UsersUpdateMatchAdField = Config.Users.UpdateMatchAdField;
         UsersUpdateMatchCloudField = Config.Users.UpdateMatchCloudField;
+        UsersSecondaryUpdateMatchAdField = Config.Users.SecondaryUpdateMatchSourceField;
+        UsersSecondaryUpdateMatchCloudField = Config.Users.SecondaryUpdateMatchCloudField;
 
         UserMappings.Clear();
         foreach (var m in Config.Users.FieldMappings)
@@ -1555,6 +1587,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Assets.AdFilterOverride = AssetsAdFilterOverride;
         Config.Assets.UpdateMatchAdField = AssetsUpdateMatchAdField;
         Config.Assets.UpdateMatchCloudField = AssetsUpdateMatchCloudField;
+        Config.Assets.SecondaryUpdateMatchSourceField = AssetsSecondaryUpdateMatchAdField;
+        Config.Assets.SecondaryUpdateMatchCloudField = AssetsSecondaryUpdateMatchCloudField;
 
         Config.Users.Enabled = UsersEnabled;
         Config.Users.GetEndpoint = UsersGetEndpoint;
@@ -1570,6 +1604,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Users.AdSourceIsGroup = UsersAdSourceIsGroup;
         Config.Users.UpdateMatchAdField = UsersUpdateMatchAdField;
         Config.Users.UpdateMatchCloudField = UsersUpdateMatchCloudField;
+        Config.Users.SecondaryUpdateMatchSourceField = UsersSecondaryUpdateMatchAdField;
+        Config.Users.SecondaryUpdateMatchCloudField = UsersSecondaryUpdateMatchCloudField;
 
         Config.Schedule.CoupledSchedule = CoupledSchedule;
         Config.Schedule.PrimarySchedule.Type = PrimaryScheduleType;

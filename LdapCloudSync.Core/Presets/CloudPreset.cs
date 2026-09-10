@@ -68,6 +68,16 @@ public sealed class PresetEndpoints
     public string UpdateMatchCloudField { get; init; } = string.Empty;
 
     /// <summary>
+    /// Default secondary AD attribute for PUT retry fallback matching.
+    /// </summary>
+    public string SecondaryUpdateMatchAdField { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Default secondary cloud field for PUT retry fallback matching.
+    /// </summary>
+    public string SecondaryUpdateMatchCloudField { get; init; } = string.Empty;
+
+    /// <summary>
     /// Default field mappings pre-populated for this preset.
     /// </summary>
     public List<FieldMapping> DefaultMappings { get; init; } = [];
