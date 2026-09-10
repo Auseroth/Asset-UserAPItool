@@ -1,4 +1,5 @@
 using System.Text.Json;
+using LdapCloudSync.Core.Models;
 using Serilog;
 
 namespace LdapCloudSync.Core.Services;
@@ -35,9 +36,17 @@ public sealed class SourceFileService
     {
         EnsureDirectoryExists();
 
-        return Directory
+        var jsonNames = Directory
             .GetFiles(SourceFilesDirectory, "*.json")
-            .Select(f => Path.GetFileNameWithoutExtension(f))
+            .Select(f => Path.GetFileNameWithoutExtension(f));
+
+        var linkedNames = Directory
+            .GetFiles(SourceFilesDirectory, "*.link")
+            .Select(f => Path.GetFileNameWithoutExtension(f));
+
+        return jsonNames
+            .Concat(linkedNames)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -67,21 +76,133 @@ public sealed class SourceFileService
             prettyJson = rawJson;
         }
 
+        if (!File.Exists(path))
+        {
+            var linkPath = GetLinkPath(name);
+            if (File.Exists(linkPath))
+            {
+                var linkedPath = (await File.ReadAllTextAsync(linkPath)).Trim();
+                if (string.IsNullOrWhiteSpace(linkedPath))
+                    throw new InvalidOperationException($"Source file link '{name}' is empty or invalid.");
+
+                await File.WriteAllTextAsync(linkedPath, prettyJson);
+                _log.Information("Linked source file saved: {Path}", linkedPath);
+                return;
+            }
+        }
+
         await File.WriteAllTextAsync(path, prettyJson);
         _log.Information("Source file saved: {Path}", path);
     }
 
     /// <summary>
+    /// Registers an external JSON file as a source by creating a local link entry.
+    /// </summary>
+    public string RegisterExternalFile(string externalPath, string? alias = null)
+    {
+        EnsureDirectoryExists();
+
+        if (string.IsNullOrWhiteSpace(externalPath))
+            throw new ArgumentException("External file path cannot be empty.", nameof(externalPath));
+
+        var fullPath = Path.GetFullPath(externalPath);
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException("Selected file does not exist.", fullPath);
+
+        var baseName = string.IsNullOrWhiteSpace(alias)
+            ? Path.GetFileNameWithoutExtension(fullPath)
+            : alias.Trim();
+
+        var finalName = GetAvailableName(baseName);
+        var linkPath = GetLinkPath(finalName);
+
+        File.WriteAllText(linkPath, fullPath);
+        _log.Information("External source file linked: {Name} -> {Path}", finalName, fullPath);
+
+        return finalName;
+    }
+
+    /// <summary>
+    /// Applies a configured post-success action to the linked source file payload.
+    /// This does not remove or rename the .link registration file itself.
+    /// </summary>
+    public async Task<(bool Applied, string Message)> ApplyLinkedFileSuccessActionAsync(
+        string sourceName,
+        FileSourceSuccessAction action,
+        string renameSuffix)
+    {
+        if (action == FileSourceSuccessAction.None)
+            return (false, "No post-success action configured.");
+
+        var linkPath = GetLinkPath(sourceName);
+        if (!File.Exists(linkPath))
+            return (false, $"Source '{sourceName}' is not a linked file source.");
+
+        var linkedPath = (await File.ReadAllTextAsync(linkPath)).Trim();
+        if (string.IsNullOrWhiteSpace(linkedPath))
+            return (false, $"Linked path for source '{sourceName}' is empty.");
+
+        if (!File.Exists(linkedPath))
+            return (false, $"Linked source file not found: {linkedPath}");
+
+        switch (action)
+        {
+            case FileSourceSuccessAction.DeleteFile:
+                File.Delete(linkedPath);
+                return (true, $"Deleted linked source file '{linkedPath}'.");
+
+            case FileSourceSuccessAction.RenameFile:
+                var dir = Path.GetDirectoryName(linkedPath) ?? string.Empty;
+                var baseName = Path.GetFileNameWithoutExtension(linkedPath);
+                var ext = Path.GetExtension(linkedPath);
+
+                var safeSuffix = string.IsNullOrWhiteSpace(renameSuffix)
+                    ? "-processed"
+                    : renameSuffix.Trim();
+
+                var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+                var candidate = Path.Combine(dir, $"{baseName}{safeSuffix}-{timestamp}{ext}");
+
+                var i = 2;
+                while (File.Exists(candidate))
+                {
+                    candidate = Path.Combine(dir, $"{baseName}{safeSuffix}-{timestamp}-{i}{ext}");
+                    i++;
+                }
+
+                File.Move(linkedPath, candidate);
+                return (true, $"Renamed linked source file to '{candidate}'.");
+
+            default:
+                return (false, $"Unsupported post-success action: {action}");
+        }
+    }
+
+    /// <summary>
     /// Reads a saved source file and returns its raw JSON content for the editor.
+    /// Supports local JSON files and linked external JSON files.
     /// </summary>
     public async Task<string> ReadRawJsonAsync(string name)
     {
         var path = GetFilePath(name);
 
-        if (!File.Exists(path))
-            throw new FileNotFoundException($"Source file '{name}' not found.", path);
+        if (File.Exists(path))
+            return await File.ReadAllTextAsync(path);
 
-        return await File.ReadAllTextAsync(path);
+        var linkPath = GetLinkPath(name);
+        if (File.Exists(linkPath))
+        {
+            var linkedPath = (await File.ReadAllTextAsync(linkPath)).Trim();
+            if (string.IsNullOrWhiteSpace(linkedPath))
+                throw new InvalidOperationException($"Source file link '{name}' is empty or invalid.");
+
+            if (!File.Exists(linkedPath))
+                throw new FileNotFoundException($"Linked source file for '{name}' was not found.", linkedPath);
+
+            return await File.ReadAllTextAsync(linkedPath);
+        }
+
+        throw new FileNotFoundException($"Source file '{name}' not found.", path);
     }
 
     /// <summary>
@@ -98,34 +219,38 @@ public sealed class SourceFileService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            JsonElement arrayElement;
+            List<Dictionary<string, string>> records;
 
-            // Support both: top-level array, or object with category keys
+            // Supported formats:
+            // 1) top-level array: [ {...}, {...} ]
+            // 2) object with category array: { "assets": [ ... ] } / { "users": [ ... ] }
+            // 3) object with "fields" array: { "fields": [ ... ] }
+            // 4) single record object: { "ComputerName": "...", ... }
             if (root.ValueKind == JsonValueKind.Array)
             {
-                arrayElement = root;
+                records = ParseRecordsFromArray(root);
             }
-            else if (root.ValueKind == JsonValueKind.Object
-                     && root.TryGetProperty(category, out var nested)
-                     && nested.ValueKind == JsonValueKind.Array)
+            else if (root.ValueKind == JsonValueKind.Object)
             {
-                arrayElement = nested;
+                if (TryGetArrayPropertyCaseInsensitive(root, category, out var categoryArray))
+                {
+                    records = ParseRecordsFromArray(categoryArray);
+                }
+                else if (TryGetArrayPropertyCaseInsensitive(root, "fields", out var fieldsArray))
+                {
+                    records = ParseRecordsFromArray(fieldsArray);
+                }
+                else
+                {
+                    var singleRecord = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    FlattenJsonObject(root, singleRecord, prefix: null);
+                    records = [singleRecord];
+                }
             }
             else
             {
-                _log.Warning("Source file '{Name}' does not contain a '{Category}' array", name, category);
+                _log.Warning("Source file '{Name}' is not an object or array and cannot be parsed.", name);
                 return [];
-            }
-
-            var records = new List<Dictionary<string, string>>();
-
-            foreach (var item in arrayElement.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object) continue;
-
-                var record = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                FlattenJsonObject(item, record, prefix: null);
-                records.Add(record);
             }
 
             _log.Information("Read {Count} records from source file '{Name}' category '{Category}'",
@@ -145,11 +270,19 @@ public sealed class SourceFileService
     /// </summary>
     public void DeleteFile(string name)
     {
-        var path = GetFilePath(name);
-        if (File.Exists(path))
+        var jsonPath = GetFilePath(name);
+        var linkPath = GetLinkPath(name);
+
+        if (File.Exists(jsonPath))
         {
-            File.Delete(path);
-            _log.Information("Source file deleted: {Path}", path);
+            File.Delete(jsonPath);
+            _log.Information("Source file deleted: {Path}", jsonPath);
+        }
+
+        if (File.Exists(linkPath))
+        {
+            File.Delete(linkPath);
+            _log.Information("Source file link deleted: {Path}", linkPath);
         }
     }
 
@@ -159,23 +292,64 @@ public sealed class SourceFileService
     public void RenameFile(string currentName, string newName)
     {
         ValidateName(newName);
-        var oldPath = GetFilePath(currentName);
-        var newPath = GetFilePath(newName);
 
-        if (!File.Exists(oldPath))
-            throw new FileNotFoundException($"Source file '{currentName}' not found.", oldPath);
+        var oldJsonPath = GetFilePath(currentName);
+        var oldLinkPath = GetLinkPath(currentName);
+        var newJsonPath = GetFilePath(newName);
+        var newLinkPath = GetLinkPath(newName);
 
-        if (File.Exists(newPath))
+        if (File.Exists(newJsonPath) || File.Exists(newLinkPath))
             throw new InvalidOperationException($"A source file named '{newName}' already exists.");
 
-        File.Move(oldPath, newPath);
-        _log.Information("Source file renamed: {OldPath} -> {NewPath}", oldPath, newPath);
+        if (File.Exists(oldJsonPath))
+        {
+            File.Move(oldJsonPath, newJsonPath);
+            _log.Information("Source file renamed: {OldPath} -> {NewPath}", oldJsonPath, newJsonPath);
+            return;
+        }
+
+        if (File.Exists(oldLinkPath))
+        {
+            File.Move(oldLinkPath, newLinkPath);
+            _log.Information("Source file link renamed: {OldPath} -> {NewPath}", oldLinkPath, newLinkPath);
+            return;
+        }
+
+        throw new FileNotFoundException($"Source file '{currentName}' not found.", oldJsonPath);
     }
 
     //  Helpers 
 
+    public bool IsLinkedFileSource(string sourceName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceName))
+            return false;
+
+        return File.Exists(GetLinkPath(sourceName.Trim()));
+    }
+
     private string GetFilePath(string name) =>
         Path.Combine(SourceFilesDirectory, $"{name}.json");
+
+    private string GetLinkPath(string name) =>
+        Path.Combine(SourceFilesDirectory, $"{name}.link");
+
+    private bool SourceNameExists(string name) =>
+        File.Exists(GetFilePath(name)) || File.Exists(GetLinkPath(name));
+
+    private string GetAvailableName(string baseName)
+    {
+        ValidateName(baseName);
+
+        if (!SourceNameExists(baseName))
+            return baseName;
+
+        var i = 2;
+        while (SourceNameExists($"{baseName}-{i}"))
+            i++;
+
+        return $"{baseName}-{i}";
+    }
 
     private void EnsureDirectoryExists() =>
         Directory.CreateDirectory(SourceFilesDirectory);
@@ -193,6 +367,45 @@ public sealed class SourceFileService
         }
     }
 
+
+    private static List<Dictionary<string, string>> ParseRecordsFromArray(JsonElement arrayElement)
+    {
+        var records = new List<Dictionary<string, string>>();
+
+        foreach (var item in arrayElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+
+            var record = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            FlattenJsonObject(item, record, prefix: null);
+            records.Add(record);
+        }
+
+        return records;
+    }
+
+    private static bool TryGetArrayPropertyCaseInsensitive(
+        JsonElement root,
+        string propertyName,
+        out JsonElement arrayElement)
+    {
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (!string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (prop.Value.ValueKind == JsonValueKind.Array)
+            {
+                arrayElement = prop.Value;
+                return true;
+            }
+
+            break;
+        }
+
+        arrayElement = default;
+        return false;
+    }
 
     /// <summary>
     /// Flattens a JSON object into string key-value pairs.

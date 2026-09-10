@@ -539,7 +539,8 @@
                                  ToolTip="Leave blank to use the source name." />
                         <TextBlock FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"
                                    Margin="0,3,0,0" TextWrapping="Wrap">
-                            Fetches ALL records from the source, then saves.
+                            Fetches ALL records from the source, then saves. Use this to build
+                            a static file source for cloud targets.
                         </TextBlock>
                     </StackPanel>
                     <Button Grid.Column="2" Content="Retrieve All &amp; Save"

@@ -165,7 +165,7 @@ public sealed class SolarWindsClient : BaseCloudClient
     /// SolarWinds paginates with ?page=N (25 items per page by default).
     /// Fetches all pages to build the full existing record set.
     /// </summary>
-    private async Task<List<JsonObject>> FetchAllPagesAsync(SyncCategoryConfig categoryConfig)
+    private async Task<List<JsonObject>> FetchAllPagesAsync(SyncCategoryConfig categoryConfig, string? filter = null)
     {
         var allRecords = new List<JsonObject>();
 
@@ -179,8 +179,13 @@ public sealed class SolarWindsClient : BaseCloudClient
         {
             try
             {
-                var separator = categoryConfig.GetEndpoint.Contains('?') ? "&" : "?";
-                var pagedEndpoint = $"{categoryConfig.GetEndpoint}{separator}page={page}&per_page=100";
+                var endpoint = categoryConfig.GetEndpoint;
+
+                if (!string.IsNullOrEmpty(filter))
+                    endpoint = endpoint.Contains('?') ? $"{endpoint}&{filter}" : $"{endpoint}?{filter}";
+
+                var separator = endpoint.Contains('?') ? "&" : "?";
+                var pagedEndpoint = $"{endpoint}{separator}page={page}&per_page=100";
 
                 var request = BuildRequest(HttpMethod.Get, pagedEndpoint);
                 var response = await _httpClient.SendAsync(request);
@@ -227,4 +232,53 @@ public sealed class SolarWindsClient : BaseCloudClient
 
     protected override Task<List<JsonObject>> FetchExistingRecordsAsync(SyncCategoryConfig categoryConfig)
         => FetchAllPagesAsync(categoryConfig);
+
+    /// <summary>
+    /// Overrides the base implementation to paginate through all SolarWinds pages
+    /// before applying the maxRecords limit. The base class only issues a single
+    /// HTTP request which returns at most 25 records (SolarWinds default page size).
+    /// </summary>
+    public override async Task<(IReadOnlyList<Dictionary<string, string>> Records, string RawJson)> GetRecordsAsync(
+        string category,
+        string? filter = null,
+        int maxRecords = 0)
+    {
+        var categoryConfig = GetCategoryConfig(category);
+
+        if (string.IsNullOrEmpty(categoryConfig.GetEndpoint))
+            return ([], "No GET endpoint configured for this category.");
+
+        try
+        {
+            var allRecords = await FetchAllPagesAsync(categoryConfig, filter);
+
+            var flat = new List<Dictionary<string, string>>();
+            foreach (var item in allRecords)
+            {
+                var record = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                FlattenJsonObjectToStrings(item, record, prefix: null);
+                flat.Add(record);
+            }
+
+            if (maxRecords > 0)
+                flat = flat.Take(maxRecords).ToList();
+
+            // Serialize the (optionally truncated) records back to a JSON string
+            // so the raw JSON preview and editor window work the same as other providers.
+            var previewItems = maxRecords > 0
+                ? allRecords.Take(maxRecords).ToList()
+                : allRecords;
+            var rawJson = JsonSerializer.Serialize(previewItems, new JsonSerializerOptions { WriteIndented = true });
+
+            _log.Information("GetRecordsAsync (SolarWinds): {Count} {Category} records fetched",
+                flat.Count, category);
+
+            return (flat, rawJson);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "GetRecordsAsync failed for {Category} on {Target}", category, _target.Name);
+            return ([], $"Error: {ex.Message}");
+        }
+    }
 }

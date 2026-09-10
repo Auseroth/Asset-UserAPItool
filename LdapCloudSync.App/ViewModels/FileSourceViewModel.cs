@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows.Input;
 using LdapCloudSync.Core.Services;
 
@@ -50,7 +51,25 @@ public sealed class FileSourceViewModel : ViewModelBase
     {
         try
         {
-            JsonContent = await _sourceFileService.ReadRawJsonAsync(_originalName);
+            SaveStatus = "Loading...";
+
+            // Read and pretty-print on a background thread to avoid freezing the UI
+            // for large files (e.g. full SolarWinds asset exports with nested owner objects).
+            var formatted = await Task.Run(async () =>
+            {
+                var raw = await _sourceFileService.ReadRawJsonAsync(_originalName);
+                try
+                {
+                    using var doc = JsonDocument.Parse(raw);
+                    return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+                }
+                catch
+                {
+                    return raw; // Not valid JSON — show as-is
+                }
+            });
+
+            JsonContent = formatted;
             SaveStatus  = string.Empty;
         }
         catch (Exception ex)

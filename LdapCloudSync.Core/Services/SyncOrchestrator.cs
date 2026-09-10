@@ -90,14 +90,15 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
 
             var sourceId = target.SourceId;
             var isFileSource = sourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal);
+            string? fileSourceName = null;
 
             if (isFileSource)
             {
                 // File source: read from saved JSON in ProgramData/LDAPult/sourceFiles/
-                var fileName = sourceId[SourceFileService.FileSourcePrefix.Length..];
-                _log.Information("Source: file '{FileName}' for {Target}/{Category}", fileName, target.Name, category);
+                fileSourceName = sourceId[SourceFileService.FileSourcePrefix.Length..];
+                _log.Information("Source: file '{FileName}' for {Target}/{Category}", fileSourceName, target.Name, category);
 
-                var fileRecords = await _sourceFileService.ReadRecordsAsync(fileName, category);
+                var fileRecords = await _sourceFileService.ReadRecordsAsync(fileSourceName, category);
                 sourceRecords = maxRecords > 0 ? fileRecords.Take(maxRecords).ToList() : fileRecords;
             }
             else
@@ -191,6 +192,30 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
             _log.Information(
                 "=== {SyncLabel} SYNC COMPLETE: {Target} / {Category} — Created: {Created}, Updated: {Updated}, Failed: {Failed} ===",
                 syncLabel, target.Name, category, result.Created, result.Updated, result.Failed);
+
+            if (isFileSource
+                && maxRecords == 0
+                && fileSourceName is not null
+                && result.Failed == 0
+                && result.Errors.Count == 0)
+            {
+                try
+                {
+                    var (applied, message) = await _sourceFileService.ApplyLinkedFileSuccessActionAsync(
+                        fileSourceName,
+                        target.FileSourceSuccessAction,
+                        target.FileSourceRenameSuffix);
+
+                    if (applied)
+                        _log.Information("Post-success file action applied for source '{SourceName}': {Message}", fileSourceName, message);
+                    else if (target.FileSourceSuccessAction != FileSourceSuccessAction.None)
+                        _log.Warning("Post-success file action skipped for source '{SourceName}': {Message}", fileSourceName, message);
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning(ex, "Post-success file action failed for source '{SourceName}'", fileSourceName);
+                }
+            }
 
             return result;
         }

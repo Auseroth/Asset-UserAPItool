@@ -18,11 +18,15 @@
                 <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <Button Content="+ AD" Command="{Binding AddAdSourceCommand}"
-                                Style="{StaticResource PrimaryButton}" Padding="10,4" FontSize="11"
+                                Style="{StaticResource PrimaryButton}" Padding="8,4" FontSize="11"
                                 Margin="0,0,4,0" ToolTip="Add an Active Directory source" />
                         <Button Content="+ Cloud" Command="{Binding AddCloudSourceCommand}"
-                                Style="{StaticResource PrimaryButton}" Padding="10,4" FontSize="11"
+                                Style="{StaticResource PrimaryButton}" Padding="8,4" FontSize="11"
+                                Margin="0,0,4,0"
                                 ToolTip="Add a cloud API source" />
+                        <Button Content="+ File" Command="{Binding AddFileSourceCommand}"
+                                Style="{StaticResource PrimaryButton}" Padding="8,4" FontSize="11"
+                                ToolTip="Browse to an existing JSON file source" />
                     </StackPanel>
                     <Button Content="- Remove" Command="{Binding RemoveSourceCommand}"
                             Style="{StaticResource SecondaryButton}" Padding="10,4" FontSize="11"
@@ -107,8 +111,8 @@
                         </DockPanel>
 
                         <TextBlock FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"
-                                   TextWrapping="Wrap" Margin="0,0,0,4">
-                            JSON snapshots saved via Test Retrieve.
+                                   TextWrapping="Wrap" Margin="0,0,0,6">
+                            File sources are browsed/linked from existing JSON files.
                             Referenced by targets as "file:name".
                         </TextBlock>
 

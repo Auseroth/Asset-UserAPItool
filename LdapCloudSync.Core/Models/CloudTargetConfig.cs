@@ -18,6 +18,16 @@ public sealed class CloudTargetConfig
     public string SourceId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Optional post-success action when this target syncs from a linked file source.
+    /// </summary>
+    public FileSourceSuccessAction FileSourceSuccessAction { get; set; } = FileSourceSuccessAction.None;
+
+    /// <summary>
+    /// Suffix used when FileSourceSuccessAction is RenameFile.
+    /// </summary>
+    public string FileSourceRenameSuffix { get; set; } = "-processed";
+
+    /// <summary>
     /// The preset template that was used to create this config (for reference only).
     /// </summary>
     public string PresetOrigin { get; set; } = "Blank (REST)";
@@ -85,6 +95,23 @@ public enum AuthType
     BearerToken,
     BasicAuth,
     Hmac
+}
+
+public enum FileSourceSuccessAction
+{
+    None,
+    DeleteFile,
+    RenameFile
+}
+
+public static class FileSourceSuccessActionValues
+{
+    public static FileSourceSuccessAction[] All { get; } =
+    [
+        FileSourceSuccessAction.None,
+        FileSourceSuccessAction.DeleteFile,
+        FileSourceSuccessAction.RenameFile
+    ];
 }
 
 /// <summary>

@@ -46,7 +46,8 @@
         <!-- Source Selection -->
         <TextBlock Text="Data Source" Style="{StaticResource SectionHeader}" />
         <Border Style="{StaticResource CardPanel}">
-            <Grid>
+            <StackPanel>
+                <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="8" />
@@ -82,6 +83,32 @@
            FontStyle="Italic" />
                 </Border>
             </Grid>
+
+            <StackPanel Margin="0,8,0,0"
+                        Visibility="{Binding IsLinkedFileSourceSelected, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="When linked file source sync succeeds" Style="{StaticResource FieldLabel}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Success Action" Style="{StaticResource FieldLabel}" />
+                        <ComboBox SelectedValue="{Binding FileSourceSuccessAction}"
+                                  ItemsSource="{Binding Source={x:Static models:FileSourceSuccessActionValues.All}}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                Visibility="{Binding ShowFileSourceRenameSuffix, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="Rename Suffix" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding FileSourceRenameSuffix, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Example: -processed" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+            </StackPanel>
         </Border>
 
         <!-- Connection Settings (Target API) -->

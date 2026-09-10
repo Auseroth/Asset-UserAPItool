@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using Microsoft.Win32;
 using LdapCloudSync.Core.Models;
 using LdapCloudSync.Core.Services;
 using LdapCloudSync.Core.Presets;
@@ -25,6 +26,7 @@ public sealed class SourcesViewModel : ViewModelBase
         AddCloudSourceCommand = new RelayCommand(AddCloudSource);
         RemoveSourceCommand = new RelayCommand(RemoveSource, () => SelectedSource is not null);
         RefreshFileSourcesCommand = new RelayCommand(RefreshFileSources);
+        AddFileSourceCommand = new AsyncRelayCommand(AddFileSourceAsync);
         DeleteFileSourceCommand = new RelayCommand<string>(DeleteFileSource);
         SelectFileSourceCommand = new AsyncRelayCommand(p => SelectFileSourceAsync(p as string));
 
@@ -78,6 +80,7 @@ public sealed class SourcesViewModel : ViewModelBase
     public ObservableCollection<string> FileSourceNames { get; } = [];
 
     public ICommand RefreshFileSourcesCommand { get; }
+    public ICommand AddFileSourceCommand { get; }
     public ICommand DeleteFileSourceCommand { get; }
 
     private void RefreshFileSources()
@@ -85,6 +88,25 @@ public sealed class SourcesViewModel : ViewModelBase
         FileSourceNames.Clear();
         foreach (var name in _sourceFileService.GetSavedFileNames())
             FileSourceNames.Add(name);
+    }
+
+    private async Task AddFileSourceAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select JSON source file",
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        var sourceName = _sourceFileService.RegisterExternalFile(dialog.FileName);
+
+        RefreshFileSources();
+        await SelectFileSourceAsync(sourceName);
     }
 
     private void DeleteFileSource(string? name)

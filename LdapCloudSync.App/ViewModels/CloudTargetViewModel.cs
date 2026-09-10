@@ -538,8 +538,56 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public string SourceId
     {
         get => _sourceId;
-        set => SetProperty(ref _sourceId, value);
+        set
+        {
+            if (SetProperty(ref _sourceId, value))
+            {
+                OnPropertyChanged(nameof(IsFileSourceSelected));
+                OnPropertyChanged(nameof(IsLinkedFileSourceSelected));
+
+                if (!IsLinkedFileSourceSelected && FileSourceSuccessAction != FileSourceSuccessAction.None)
+                    FileSourceSuccessAction = FileSourceSuccessAction.None;
+
+                OnPropertyChanged(nameof(ShowFileSourceRenameSuffix));
+            }
+        }
     }
+
+    public bool IsFileSourceSelected =>
+        SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal);
+
+    public bool IsLinkedFileSourceSelected
+    {
+        get
+        {
+            if (!IsFileSourceSelected)
+                return false;
+
+            var fileName = SourceId[SourceFileService.FileSourcePrefix.Length..];
+            return _sourceFileService.IsLinkedFileSource(fileName);
+        }
+    }
+
+    private FileSourceSuccessAction _fileSourceSuccessAction = FileSourceSuccessAction.None;
+    public FileSourceSuccessAction FileSourceSuccessAction
+    {
+        get => _fileSourceSuccessAction;
+        set
+        {
+            if (SetProperty(ref _fileSourceSuccessAction, value))
+                OnPropertyChanged(nameof(ShowFileSourceRenameSuffix));
+        }
+    }
+
+    private string _fileSourceRenameSuffix = "-processed";
+    public string FileSourceRenameSuffix
+    {
+        get => _fileSourceRenameSuffix;
+        set => SetProperty(ref _fileSourceRenameSuffix, value);
+    }
+
+    public bool ShowFileSourceRenameSuffix =>
+        IsLinkedFileSourceSelected && FileSourceSuccessAction == FileSourceSuccessAction.RenameFile;
 
     private string _selectedSourceDisplay = string.Empty;
     public string SelectedSourceDisplay
@@ -559,14 +607,19 @@ public sealed class CloudTargetViewModel : ViewModelBase
     private void RefreshSourceOptions()
     {
         var current = _selectedSourceDisplay;
+        var displayFromSourceId = _sourcesVm.GetDisplayOptionForSourceId(SourceId, _sourceFileService);
+
         AvailableSourceOptions.Clear();
         foreach (var opt in _sourcesVm.GetAllSourceOptions(_sourceFileService))
             AvailableSourceOptions.Add(opt);
 
-        _selectedSourceDisplay = AvailableSourceOptions.Contains(current)
-            ? current
-            : AvailableSourceOptions.Count > 0 ? AvailableSourceOptions[0] : string.Empty;
+        _selectedSourceDisplay = AvailableSourceOptions.Contains(displayFromSourceId)
+            ? displayFromSourceId
+            : AvailableSourceOptions.Contains(current)
+                ? current
+                : AvailableSourceOptions.Count > 0 ? AvailableSourceOptions[0] : string.Empty;
 
+        SourceId = _sourcesVm.ResolveSourceId(_selectedSourceDisplay, _sourceFileService);
         OnPropertyChanged(nameof(SelectedSourceDisplay));
     }
 
@@ -1086,6 +1139,51 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     private async Task DiscoverAdComputerFieldsAsync()
     {
+        // File source path
+        if (SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                var fileName = SourceId[SourceFileService.FileSourcePrefix.Length..];
+                var records = await _sourceFileService.ReadRecordsAsync(fileName, "assets");
+                var fields = records
+                    .SelectMany(r => r.Keys)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                DiscoveredAdComputerAttributes.Clear();
+                foreach (var f in fields) DiscoveredAdComputerAttributes.Add(f);
+
+                if (records.Count > 0) SetAssetSampleRecord(records[0]);
+                CloudConnectionStatus = $"Discovered {fields.Count} source fields from file source '{fileName}'.";
+            }
+            catch (Exception ex)
+            {
+                CloudConnectionStatus = $"File source discovery failed: {ex.Message}";
+            }
+            return;
+        }
+
+        // Cloud source path
+        var cloudSource = ResolveCloudSource();
+        if (cloudSource is not null)
+        {
+            CloudConnectionStatus = "Discovering source fields from cloud source...";
+            try
+            {
+                cloudSource.ApplyToConfig();
+                using var client = CloudSourceFactory.CreateClient(cloudSource.Config);
+                var (fields, _) = await client.DiscoverFieldsAsync("assets");
+                DiscoveredAdComputerAttributes.Clear();
+                foreach (var f in fields) DiscoveredAdComputerAttributes.Add(f);
+                CloudConnectionStatus = $"Discovered {fields.Count} source fields from cloud source '{cloudSource.Name}'.";
+            }
+            catch (Exception ex) { CloudConnectionStatus = $"Discovery failed: {ex.Message}"; }
+            return;
+        }
+
+        // AD source path
         var adConfig = ResolveAdConfig();
         if (adConfig is null)
         {
@@ -1114,6 +1212,51 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     private async Task DiscoverAdUserFieldsAsync()
     {
+        // File source path
+        if (SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                var fileName = SourceId[SourceFileService.FileSourcePrefix.Length..];
+                var records = await _sourceFileService.ReadRecordsAsync(fileName, "users");
+                var fields = records
+                    .SelectMany(r => r.Keys)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                DiscoveredAdUserAttributes.Clear();
+                foreach (var f in fields) DiscoveredAdUserAttributes.Add(f);
+
+                if (records.Count > 0) SetUserSampleRecord(records[0]);
+                CloudConnectionStatus = $"Discovered {fields.Count} source fields from file source '{fileName}'.";
+            }
+            catch (Exception ex)
+            {
+                CloudConnectionStatus = $"File source discovery failed: {ex.Message}";
+            }
+            return;
+        }
+
+        // Cloud source path
+        var cloudSource = ResolveCloudSource();
+        if (cloudSource is not null)
+        {
+            CloudConnectionStatus = "Discovering source fields from cloud source...";
+            try
+            {
+                cloudSource.ApplyToConfig();
+                using var client = CloudSourceFactory.CreateClient(cloudSource.Config);
+                var (fields, _) = await client.DiscoverFieldsAsync("users");
+                DiscoveredAdUserAttributes.Clear();
+                foreach (var f in fields) DiscoveredAdUserAttributes.Add(f);
+                CloudConnectionStatus = $"Discovered {fields.Count} source fields from cloud source '{cloudSource.Name}'.";
+            }
+            catch (Exception ex) { CloudConnectionStatus = $"Discovery failed: {ex.Message}"; }
+            return;
+        }
+
+        // AD source path
         var adConfig = ResolveAdConfig();
         if (adConfig is null)
         {
@@ -1284,6 +1427,19 @@ public sealed class CloudTargetViewModel : ViewModelBase
         ApAssetsCollectionId = Config.ApAssetsCollectionId;
         ApUsersCollectionId = Config.ApUsersCollectionId;
 
+        // Source selection (must happen before background auto-load calls that use BuildTargetConfig/ApplyToConfig)
+        SourceId = Config.SourceId;
+        _selectedSourceDisplay = _sourcesVm.GetDisplayOptionForSourceId(Config.SourceId, _sourceFileService);
+        OnPropertyChanged(nameof(SelectedSourceDisplay));
+
+        // File-source success actions (linked-file sources only)
+        FileSourceRenameSuffix = string.IsNullOrWhiteSpace(Config.FileSourceRenameSuffix)
+            ? "-processed"
+            : Config.FileSourceRenameSuffix;
+        FileSourceSuccessAction = IsLinkedFileSourceSelected
+            ? Config.FileSourceSuccessAction
+            : FileSourceSuccessAction.None;
+
         // Auto-load Reftab-specific data
         if (ShowCategorySelector)
         {
@@ -1295,11 +1451,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         {
             _ = LoadApDiscoveryDataAsync();
         }
-
-        // Source selection
-        SourceId = Config.SourceId;
-        _selectedSourceDisplay = _sourcesVm.GetDisplayOptionForSourceId(Config.SourceId, _sourceFileService);
-        OnPropertyChanged(nameof(SelectedSourceDisplay));
     }
 
     /// <summary>
@@ -1441,6 +1592,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
         // Source ID
         Config.SourceId = SourceId;
+
+        // File-source success actions (persist only for linked file sources)
+        Config.FileSourceSuccessAction = IsLinkedFileSourceSelected
+            ? FileSourceSuccessAction
+            : FileSourceSuccessAction.None;
+        Config.FileSourceRenameSuffix = string.IsNullOrWhiteSpace(FileSourceRenameSuffix)
+            ? "-processed"
+            : FileSourceRenameSuffix.Trim();
     }
 
     private CloudTargetConfig BuildTargetConfig()
