@@ -255,13 +255,6 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
                             existingRecords.Count, category);
                     }
 
-                    if (string.IsNullOrWhiteSpace(matchedField))
-                    {
-                        result.Failed++;
-                        result.Errors.Add("Update match field is empty ? cannot retry as PUT.");
-                        continue;
-                    }
-
                     var existingId = FindExistingRecordByUpdateMatch(existingRecords, categoryConfig, matchedField, matchValue);
 
                     if (existingId is null && !string.IsNullOrEmpty(secondaryUpdateMatchCloudKey))

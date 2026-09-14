@@ -38,8 +38,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         DiscoverUserFieldsCommand     = new AsyncRelayCommand(DiscoverUserFieldsAsync);
         DiscoverAdComputerFieldsCommand = new AsyncRelayCommand(DiscoverAdComputerFieldsAsync);
         DiscoverAdUserFieldsCommand   = new AsyncRelayCommand(DiscoverAdUserFieldsAsync);
-        DiscoverSourceStatusOptionsCommand = new AsyncRelayCommand(DiscoverSourceStatusOptionsAsync);
-        DiscoverTargetStatusOptionsCommand = new AsyncRelayCommand(DiscoverTargetStatusOptionsAsync);
         TestCloudConnectionCommand    = new AsyncRelayCommand(TestCloudConnectionAsync);
         AddAssetMappingCommand = new RelayCommand(() =>
         {
@@ -51,17 +49,8 @@ public sealed class CloudTargetViewModel : ViewModelBase
             var m = new FieldMappingViewModel { SampleRecord = _sampleUserRecord };
             UserMappings.Add(m);
         });
-        AddAssetStatusMappingCommand = new RelayCommand(() =>
-        {
-            var m = new ReftabStatusMappingViewModel();
-            m.SetSampleRecord(_sampleComputerRecord);
-            m.SetSourceStatusOptions(DiscoveredSourceStatusOptions);
-            m.SetTargetStatusOptions(TargetStatusOptions);
-            AssetStatusMappings.Add(m);
-        });
         RemoveAssetMappingCommand = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) AssetMappings.Remove(m); });
         RemoveUserMappingCommand  = new RelayCommand<FieldMappingViewModel>(m => { if (m is not null) UserMappings.Remove(m); });
-        RemoveAssetStatusMappingCommand = new RelayCommand<ReftabStatusMappingViewModel>(m => { if (m is not null) AssetStatusMappings.Remove(m); });
         RefreshCategoriesCommand  = new AsyncRelayCommand(RefreshCategoriesAsync);
         RefreshLocationsCommand   = new AsyncRelayCommand(RefreshLocationsAsync);
         SelectAllAssetsOUsCommand = new RelayCommand<bool>(SelectAllAssetsOUs);
@@ -196,11 +185,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public bool AssetsEnabled
     {
         get => _assetsEnabled;
-        set
-        {
-            if (SetProperty(ref _assetsEnabled, value))
-                OnPropertyChanged(nameof(ShowReftabAssetStatusMappings));
-        }
+        set => SetProperty(ref _assetsEnabled, value);
     }
 
     private string _assetsGetEndpoint = string.Empty;
@@ -532,7 +517,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     public ObservableCollection<FieldMappingViewModel> AssetMappings { get; } = [];
     public ObservableCollection<FieldMappingViewModel> UserMappings { get; } = [];
-    public ObservableCollection<ReftabStatusMappingViewModel> AssetStatusMappings { get; } = [];
 
     /// <summary>Discovered cloud field names from test pull.</summary>
     public ObservableCollection<string> DiscoveredAssetCloudFields { get; } = [];
@@ -541,228 +525,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
     /// <summary>Discovered AD attribute names.</summary>
     public ObservableCollection<string> DiscoveredAdComputerAttributes { get; } = [];
     public ObservableCollection<string> DiscoveredAdUserAttributes { get; } = [];
-
-    // Reftab status lookup helper options
-    public ObservableCollection<string> SourceStatusFields { get; } = [];
-    public ObservableCollection<string> TargetStatusFields { get; } = [];
-    public ObservableCollection<string> DiscoveredSourceStatusOptions { get; } = [];
-    public ObservableCollection<string> DiscoveredTargetStatusOptions { get; } = [];
-
-    private string _selectedSourceStatusField = string.Empty;
-    public string SelectedSourceStatusField
-    {
-        get => _selectedSourceStatusField;
-        set => SetProperty(ref _selectedSourceStatusField, value);
-    }
-
-    private string _selectedTargetStatusField = string.Empty;
-    public string SelectedTargetStatusField
-    {
-        get => _selectedTargetStatusField;
-        set => SetProperty(ref _selectedTargetStatusField, value);
-    }
-
-    private IReadOnlyDictionary<string, string> TargetStatusOptions =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-    #endregion
-
-    #region Reftab Status Lookup Discovery
-
-    private async Task DiscoverSourceStatusOptionsAsync()
-    {
-        CloudConnectionStatus = "Discovering source status options...";
-        try
-        {
-            if (string.IsNullOrWhiteSpace(SelectedSourceStatusField))
-            {
-                CloudConnectionStatus = "Select a source status field first.";
-                return;
-            }
-
-            var records = await ResolveSourceStatusRecordsAsync(SelectedSourceStatusField);
-            if (records.Count == 0)
-            {
-                CloudConnectionStatus = "No source records found for status discovery.";
-                return;
-            }
-
-            SetAssetSampleRecord(records[0]);
-
-            var statuses = records
-                .SelectMany(r => ExtractNestedStatusValues(r, SelectedSourceStatusField))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            DiscoveredSourceStatusOptions.Clear();
-            foreach (var status in statuses)
-                DiscoveredSourceStatusOptions.Add(status);
-
-            foreach (var mapping in AssetStatusMappings)
-                mapping.SetSourceStatusOptions(DiscoveredSourceStatusOptions);
-
-            CloudConnectionStatus = $"Discovered {DiscoveredSourceStatusOptions.Count} source status options.";
-        }
-        catch (Exception ex)
-        {
-            CloudConnectionStatus = $"Source status discovery failed: {ex.Message}";
-        }
-    }
-
-    private async Task DiscoverTargetStatusOptionsAsync()
-    {
-        CloudConnectionStatus = "Discovering target status options...";
-        try
-        {
-            if (string.IsNullOrWhiteSpace(SelectedTargetStatusField))
-            {
-                CloudConnectionStatus = "Select a target status field first.";
-                return;
-            }
-
-            var targetConfig = BuildTargetConfig();
-            using var client = CloudClientFactory.CreateClient(targetConfig);
-
-            if (client is not BaseCloudClient baseClient)
-            {
-                CloudConnectionStatus = "Target status discovery is only supported for cloud clients.";
-                return;
-            }
-
-            var (records, _) = await baseClient.GetRecordsAsync("assets", null, maxRecords: 500);
-            if (records.Count == 0)
-            {
-                CloudConnectionStatus = "No target records found for status discovery.";
-                return;
-            }
-
-            var statusLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var record in records)
-            {
-                var names = ExtractNestedStatusValues(record, SelectedTargetStatusField);
-                foreach (var name in names)
-                {
-                    if (!statusLookup.ContainsKey(name))
-                    {
-                        var resolvedStatId = ResolveTargetStatId(record, SelectedTargetStatusField, name);
-                        statusLookup[name] = resolvedStatId ?? string.Empty;
-                    }
-                }
-            }
-
-            TargetStatusOptions = statusLookup;
-            DiscoveredTargetStatusOptions.Clear();
-            foreach (var status in statusLookup.Keys.OrderBy(v => v, StringComparer.OrdinalIgnoreCase))
-                DiscoveredTargetStatusOptions.Add(status);
-
-            foreach (var mapping in AssetStatusMappings)
-                mapping.SetTargetStatusOptions(TargetStatusOptions);
-
-            CloudConnectionStatus = $"Discovered {DiscoveredTargetStatusOptions.Count} target status options.";
-        }
-        catch (Exception ex)
-        {
-            CloudConnectionStatus = $"Target status discovery failed: {ex.Message}";
-        }
-    }
-
-    private async Task<IReadOnlyList<Dictionary<string, string>>> ResolveSourceStatusRecordsAsync(string selectedField)
-    {
-        ApplyToConfig();
-
-        if (SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
-        {
-            var fileName = SourceId[SourceFileService.FileSourcePrefix.Length..];
-            var all = await _sourceFileService.ReadRecordsAsync(fileName, "assets");
-            return all.Take(500).ToList();
-        }
-
-        var cloudSource = ResolveCloudSource();
-        if (cloudSource is not null)
-        {
-            cloudSource.ApplyToConfig();
-            using var sourceClient = CloudSourceFactory.CreateClient(cloudSource.Config);
-            var filter = cloudSource.AssetsFilter;
-            var (records, _) = await sourceClient.GetRecordsAsync(
-                "assets", string.IsNullOrWhiteSpace(filter) ? null : filter, maxRecords: 500);
-            return records;
-        }
-
-        var adConfig = ResolveAdConfig() ?? _configService.Current.Sources
-            .FirstOrDefault(s => s.SourceType == SourceType.AD)?.Ad;
-
-        if (adConfig is null)
-            return [];
-
-        var effectiveAd = SyncOrchestrator.BuildEffectiveAdConfigPublic(adConfig, Config.Assets, DirectoryObjectType.Computer);
-        using var provider = new ActiveDirectoryProvider(effectiveAd);
-        return await provider.QueryAsync(DirectoryObjectType.Computer, [selectedField], maxResults: 500);
-    }
-
-    private static string? ResolveTargetStatId(
-        Dictionary<string, string> record,
-        string selectedField,
-        string selectedStatusName)
-    {
-        if (record.TryGetValue("statid", out var directStatId) && !string.IsNullOrWhiteSpace(directStatId))
-            return directStatId;
-
-        var nestedStatIdKey = selectedField.Trim() + ".statid";
-        if (record.TryGetValue(nestedStatIdKey, out var nestedStatId) && !string.IsNullOrWhiteSpace(nestedStatId))
-            return nestedStatId;
-
-        var nestedNameKey = selectedField.Trim() + ".name";
-        if (record.TryGetValue(nestedNameKey, out var nestedName)
-            && string.Equals(nestedName, selectedStatusName, StringComparison.OrdinalIgnoreCase)
-            && record.TryGetValue(nestedStatIdKey, out var nestedMappedStatId)
-            && !string.IsNullOrWhiteSpace(nestedMappedStatId))
-        {
-            return nestedMappedStatId;
-        }
-
-        return null;
-    }
-
-    private static IReadOnlyList<string> ExtractNestedStatusValues(
-        Dictionary<string, string> sample,
-        string selectedField)
-    {
-        if (sample.Count == 0 || string.IsNullOrWhiteSpace(selectedField))
-            return [];
-
-        var directValues = sample.Keys
-            .Where(k => string.Equals(k, selectedField, StringComparison.OrdinalIgnoreCase))
-            .Select(k => sample[k])
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (directValues.Count > 0)
-            return directValues;
-
-        var nameKey = selectedField.Trim() + ".name";
-        if (sample.TryGetValue(nameKey, out var nestedNameValue) && !string.IsNullOrWhiteSpace(nestedNameValue))
-            return [nestedNameValue];
-
-        var prefix = selectedField.Trim() + ".";
-        var nested = sample.Keys
-            .Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            .Select(k => k[prefix.Length..])
-            .Select(k =>
-            {
-                var dot = k.IndexOf('.');
-                return dot >= 0 ? k[..dot] : k;
-            })
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return nested;
-    }
 
     #endregion
 
@@ -773,15 +535,11 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public ICommand DiscoverUserFieldsCommand { get; }
     public ICommand DiscoverAdComputerFieldsCommand { get; }
     public ICommand DiscoverAdUserFieldsCommand { get; }
-    public ICommand DiscoverSourceStatusOptionsCommand { get; }
-    public ICommand DiscoverTargetStatusOptionsCommand { get; }
     public ICommand TestCloudConnectionCommand { get; }
     public ICommand AddAssetMappingCommand { get; }
     public ICommand AddUserMappingCommand { get; }
-    public ICommand AddAssetStatusMappingCommand { get; }
     public ICommand RemoveAssetMappingCommand { get; }
     public ICommand RemoveUserMappingCommand { get; }
-    public ICommand RemoveAssetStatusMappingCommand { get; }
     public ICommand RefreshCategoriesCommand { get; }
     public ICommand RefreshLocationsCommand { get; }
     public ICommand SelectAllAssetsOUsCommand { get; }
@@ -965,7 +723,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
                 OnPropertyChanged(nameof(ShowApAssetSettings));
                 OnPropertyChanged(nameof(ShowApUserSettings));
                 OnPropertyChanged(nameof(HideGenericEndpoints));
-                OnPropertyChanged(nameof(ShowReftabAssetStatusMappings));
             }
         }
     }
@@ -976,7 +733,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public bool ShowApAssetSettings => ProviderType == "AssetPanda";
     public bool ShowApUserSettings => ProviderType == "AssetPanda";
     public bool HideGenericEndpoints => ProviderType == "AssetPanda";
-    public bool ShowReftabAssetStatusMappings => ProviderType == "Reftab" && AssetsEnabled;
 
     #endregion
 
@@ -1297,7 +1053,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
             AssetsAdMatchField = "cn";
             AssetsCloudMatchField = string.Empty;
             AssetMappings.Clear();
-            AssetStatusMappings.Clear();
 
             UsersEnabled = false;
             UsersGetEndpoint = string.Empty;
@@ -1352,10 +1107,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
             });
         }
 
-        AssetStatusMappings.Clear();
-        foreach (var mapping in config.Assets.ReftabStatusMappings)
-            AssetStatusMappings.Add(new ReftabStatusMappingViewModel(mapping));
-
         // Users endpoints
         UsersGetEndpoint = config.Users.GetEndpoint;
         UsersPostEndpoint = config.Users.PostEndpoint;
@@ -1403,8 +1154,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         DiscoveredAssetCloudFields.Clear();
         foreach (var f in fields) DiscoveredAssetCloudFields.Add(f);
         CloudConnectionStatus = $"Discovered {fields.Count} asset fields.";
-
-        UpdateTargetStatusFields(fields);
     }
 
     private async Task DiscoverUserFieldsAsync()
@@ -1433,7 +1182,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
                 DiscoveredAdComputerAttributes.Clear();
                 foreach (var f in fields) DiscoveredAdComputerAttributes.Add(f);
-                UpdateSourceStatusFields(fields);
 
                 if (records.Count > 0) SetAssetSampleRecord(records[0]);
                 CloudConnectionStatus = $"Discovered {fields.Count} source fields from file source '{fileName}'.";
@@ -1457,7 +1205,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
                 var (fields, _) = await client.DiscoverFieldsAsync("assets");
                 DiscoveredAdComputerAttributes.Clear();
                 foreach (var f in fields) DiscoveredAdComputerAttributes.Add(f);
-                UpdateSourceStatusFields(fields);
                 CloudConnectionStatus = $"Discovered {fields.Count} source fields from cloud source '{cloudSource.Name}'.";
             }
             catch (Exception ex) { CloudConnectionStatus = $"Discovery failed: {ex.Message}"; }
@@ -1478,7 +1225,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
             var attrs = await provider.GetAvailableAttributesAsync(DirectoryObjectType.Computer);
             DiscoveredAdComputerAttributes.Clear();
             foreach (var a in attrs) DiscoveredAdComputerAttributes.Add(a);
-            UpdateSourceStatusFields(attrs);
 
             try
             {
@@ -1642,53 +1388,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         AssetMappings.Clear();
         foreach (var m in Config.Assets.FieldMappings)
             AssetMappings.Add(new FieldMappingViewModel(m));
-
-        SelectedSourceStatusField = Config.Assets.ReftabStatusSourceField;
-        SelectedTargetStatusField = Config.Assets.ReftabStatusTargetField;
-
-        // Backfill legacy saved rows that predate TargetStatusName.
-        foreach (var m in Config.Assets.ReftabStatusMappings)
-        {
-            if (string.IsNullOrWhiteSpace(m.TargetStatusName) && !string.IsNullOrWhiteSpace(m.StatId))
-                m.TargetStatusName = m.StatusName;
-        }
-
-        AssetStatusMappings.Clear();
-        foreach (var m in Config.Assets.ReftabStatusMappings)
-            AssetStatusMappings.Add(new ReftabStatusMappingViewModel(m));
-
-        UpdateSourceStatusFields(DiscoveredAdComputerAttributes.Count > 0
-            ? DiscoveredAdComputerAttributes
-            : [SelectedSourceStatusField]);
-
-        UpdateTargetStatusFields(DiscoveredAssetCloudFields.Count > 0
-            ? DiscoveredAssetCloudFields
-            : [SelectedTargetStatusField]);
-
-        if (AssetStatusMappings.Count == 0 && string.Equals(Config.ProviderType, "Reftab", StringComparison.OrdinalIgnoreCase))
-        {
-            for (var i = AssetMappings.Count - 1; i >= 0; i--)
-            {
-                var mapping = AssetMappings[i];
-                if (IsLegacyReftabStatusFieldMapping(mapping))
-                {
-                    AssetStatusMappings.Insert(0, new ReftabStatusMappingViewModel
-                    {
-                        SourceStatus = mapping.SourceField,
-                        TargetStatus = mapping.SourceField,
-                        StatId = mapping.CloudField
-                    });
-                    AssetMappings.RemoveAt(i);
-                }
-            }
-        }
-
-        foreach (var statusMapping in AssetStatusMappings)
-        {
-            statusMapping.SetSampleRecord(_sampleComputerRecord);
-            statusMapping.SetSourceStatusOptions(DiscoveredSourceStatusOptions);
-            statusMapping.SetTargetStatusOptions(TargetStatusOptions);
-        }
 
         // Users
         UsersEnabled = Config.Users.Enabled;
@@ -1882,9 +1581,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Assets.AdMatchField = AssetsAdMatchField;
         Config.Assets.CloudMatchField = AssetsCloudMatchField;
         Config.Assets.FieldMappings = AssetMappings.Select(m => m.ToModel()).ToList();
-        Config.Assets.ReftabStatusSourceField = SelectedSourceStatusField;
-        Config.Assets.ReftabStatusTargetField = SelectedTargetStatusField;
-        Config.Assets.ReftabStatusMappings = AssetStatusMappings.Select(m => m.ToModel()).ToList();
         Config.Assets.TargetCategoryId = AssetsTargetCategoryId;
         Config.Assets.TargetLocationId = SelectedLocationId;
         Config.Assets.AdSearchBaseOverrides = GetSelectedAssetsOUs();
@@ -1949,54 +1645,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Name = Name;
         ApplyToConfig();
         return Config;
-    }
-
-    private static bool IsLegacyReftabStatusFieldMapping(FieldMappingViewModel mapping)
-    {
-        var source = mapping.SourceField?.Trim() ?? string.Empty;
-        var cloud = mapping.CloudField?.Trim() ?? string.Empty;
-
-        return (string.Equals(source, "status", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(source, "status.name", StringComparison.OrdinalIgnoreCase))
-            && string.Equals(cloud, "statid", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private void UpdateSourceStatusFields(IEnumerable<string> fields)
-    {
-        var saved = SelectedSourceStatusField;
-
-        SourceStatusFields.Clear();
-        foreach (var f in fields.Where(v => !string.IsNullOrWhiteSpace(v))
-                                .Distinct(StringComparer.OrdinalIgnoreCase)
-                                .OrderBy(v => v, StringComparer.OrdinalIgnoreCase))
-            SourceStatusFields.Add(f);
-
-        if (!string.IsNullOrWhiteSpace(saved) && !SourceStatusFields.Contains(saved))
-            SourceStatusFields.Add(saved);
-
-        if (!string.IsNullOrWhiteSpace(saved))
-            SelectedSourceStatusField = saved;
-        else if (SourceStatusFields.Count > 0)
-            SelectedSourceStatusField = SourceStatusFields[0];
-    }
-
-    private void UpdateTargetStatusFields(IEnumerable<string> fields)
-    {
-        var saved = SelectedTargetStatusField;
-
-        TargetStatusFields.Clear();
-        foreach (var f in fields.Where(v => !string.IsNullOrWhiteSpace(v))
-                                .Distinct(StringComparer.OrdinalIgnoreCase)
-                                .OrderBy(v => v, StringComparer.OrdinalIgnoreCase))
-            TargetStatusFields.Add(f);
-
-        if (!string.IsNullOrWhiteSpace(saved) && !TargetStatusFields.Contains(saved))
-            TargetStatusFields.Add(saved);
-
-        if (!string.IsNullOrWhiteSpace(saved))
-            SelectedTargetStatusField = saved;
-        else if (TargetStatusFields.Count > 0)
-            SelectedTargetStatusField = TargetStatusFields[0];
     }
 
     #endregion
@@ -2136,13 +1784,6 @@ public sealed class CloudTargetViewModel : ViewModelBase
         _sampleComputerRecord = sample;
         foreach (var mapping in AssetMappings)
             mapping.SampleRecord = sample;
-
-        foreach (var statusMapping in AssetStatusMappings)
-        {
-            statusMapping.SetSampleRecord(sample);
-            statusMapping.SetSourceStatusOptions(DiscoveredSourceStatusOptions);
-            statusMapping.SetTargetStatusOptions(TargetStatusOptions);
-        }
     }
 
     public void SetUserSampleRecord(Dictionary<string, string> sample)

@@ -102,9 +102,11 @@ public sealed class ReftabClient : BaseCloudClient
 
     /// <summary>
     /// Reftab requires:
-    /// - Assets: cid, clid injected; details.* nested into objects; status labels translated to statid
+    /// - Assets: cid, clid injected; details.* and status.* nested into objects
     /// - Loanees: "disabled" hardcoded to false; details always present (empty {} if no custom fields)
-    /// - Fields prefixed with "details." are nested into the details object
+    /// - Fields prefixed with "details." or "status." are nested into matching objects
+    ///   e.g., "details.Serial Number" becomes { "details": { "Serial Number": "ABC123" } }
+    ///         "status.name" becomes { "status": { "name": "Available" } }
     /// </summary>
     protected override void PreparePushRecord(SyncCategoryConfig categoryConfig, Dictionary<string, object> record)
     {
@@ -120,43 +122,6 @@ public sealed class ReftabClient : BaseCloudClient
         if (!isLoanee && categoryConfig.TargetLocationId > 0 && !record.ContainsKey("clid"))
         {
             record["clid"] = categoryConfig.TargetLocationId;
-        }
-
-        // Reftab asset status lookup: translate the selected status label into statid.
-        if (!isLoanee && categoryConfig.ReftabStatusMappings.Count > 0)
-        {
-            var statusValue = ResolveStatusValue(record, categoryConfig);
-            var normalizedStatusValue = NormalizeStatusToken(statusValue);
-
-            if (!string.IsNullOrWhiteSpace(normalizedStatusValue))
-            {
-                var statusMapping = categoryConfig.ReftabStatusMappings.FirstOrDefault(m =>
-                    string.Equals(
-                        NormalizeStatusToken(m.StatusName),
-                        normalizedStatusValue,
-                        StringComparison.OrdinalIgnoreCase));
-
-                if (statusMapping is not null && !string.IsNullOrWhiteSpace(statusMapping.StatId))
-                {
-                    if (TryResolveNumericStatId(statusMapping.StatId, out var statIdNumeric))
-                    {
-                        record["statid"] = statIdNumeric;
-                        record.Remove("status");
-                        record.Remove("status.name");
-                    }
-                    else
-                    {
-                        _log.Warning("Reftab status mapping found but statid was not numeric. Status='{Status}' RawStatId='{RawStatId}'",
-                            normalizedStatusValue, statusMapping.StatId);
-                    }
-                }
-                else
-                {
-                    _log.Warning("No Reftab status mapping matched source status '{Status}'. Configured mappings: {Mappings}",
-                        normalizedStatusValue,
-                        string.Join(", ", categoryConfig.ReftabStatusMappings.Select(m => $"{m.StatusName}->{m.StatId}")));
-                }
-            }
         }
 
         // Loanees: inject "disabled" as false if not already mapped
@@ -204,104 +169,6 @@ public sealed class ReftabClient : BaseCloudClient
             ReorderLoaneeRecord(record);
         else
             ReorderAssetRecord(record);
-    }
-
-    private static string? ResolveStatusValue(
-        Dictionary<string, object> record,
-        SyncCategoryConfig categoryConfig)
-    {
-        var configuredTargetField = categoryConfig.ReftabStatusTargetField?.Trim();
-        if (!string.IsNullOrWhiteSpace(configuredTargetField) &&
-            record.TryGetValue(configuredTargetField, out var configuredTargetValue) && configuredTargetValue is not null)
-        {
-            var text = TryExtractStatusText(configuredTargetValue);
-            if (!string.IsNullOrWhiteSpace(text))
-                return text;
-        }
-
-        var configuredSourceField = categoryConfig.ReftabStatusSourceField?.Trim();
-        if (!string.IsNullOrWhiteSpace(configuredSourceField) &&
-            record.TryGetValue(configuredSourceField, out var configuredSourceValue) && configuredSourceValue is not null)
-        {
-            var text = TryExtractStatusText(configuredSourceValue);
-            if (!string.IsNullOrWhiteSpace(text))
-                return text;
-        }
-
-        if (record.TryGetValue("status.name", out var statusName) && statusName is not null)
-        {
-            var text = TryExtractStatusText(statusName);
-            if (!string.IsNullOrWhiteSpace(text))
-                return text;
-        }
-
-        if (record.TryGetValue("status", out var statusValue) && statusValue is not null)
-        {
-            var text = TryExtractStatusText(statusValue);
-            if (!string.IsNullOrWhiteSpace(text))
-                return text;
-        }
-
-        return null;
-    }
-
-    private static string NormalizeStatusToken(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        var trimmed = value.Trim().Trim('"');
-
-        if (trimmed.Contains('.') && trimmed.IndexOf('.') < trimmed.Length - 1)
-            trimmed = trimmed[(trimmed.LastIndexOf('.') + 1)..];
-
-        return trimmed;
-    }
-
-    private static string? TryExtractStatusText(object raw)
-    {
-        if (raw is null)
-            return null;
-
-        if (raw is string s)
-            return s;
-
-        if (raw is JsonObject obj)
-        {
-            if (obj.TryGetPropertyValue("name", out var nameNode) && nameNode is not null)
-                return nameNode.ToString();
-
-            return obj.ToJsonString();
-        }
-
-        if (raw is JsonNode node)
-        {
-            if (node is JsonObject nodeObj && nodeObj.TryGetPropertyValue("name", out var nameNode) && nameNode is not null)
-                return nameNode.ToString();
-
-            return node.ToJsonString();
-        }
-
-        return raw.ToString();
-    }
-
-    private static bool TryResolveNumericStatId(string rawValue, out long statId)
-    {
-        statId = 0;
-
-        if (string.IsNullOrWhiteSpace(rawValue))
-            return false;
-
-        var cleaned = rawValue.Trim().Trim('"');
-
-        if (long.TryParse(cleaned, out statId))
-            return true;
-
-        var digitsOnly = new string(cleaned.Where(char.IsDigit).ToArray());
-        if (digitsOnly.Length > 0 && long.TryParse(digitsOnly, out statId))
-            return true;
-
-        return false;
     }
 
     /// <summary>

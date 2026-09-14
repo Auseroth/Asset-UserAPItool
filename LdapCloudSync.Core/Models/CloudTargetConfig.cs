@@ -164,15 +164,6 @@ public sealed class SyncCategoryConfig
     /// </summary>
     public List<FieldMapping> FieldMappings { get; set; } = [];
 
-    /// <summary>For Reftab assets: source field that contains the source status value.</summary>
-    public string ReftabStatusSourceField { get; set; } = string.Empty;
-
-    /// <summary>For Reftab assets: target field used when discovering target status options.</summary>
-    public string ReftabStatusTargetField { get; set; } = string.Empty;
-
-    /// <summary>For Reftab assets: lookup rows mapping source status names to statid values.</summary>
-    public List<ReftabStatusMapping> ReftabStatusMappings { get; set; } = [];
-
     /// <summary>For Reftab: the category ID (cid) to assign to new assets.</summary>
     public int TargetCategoryId { get; set; } = 0;
 
