@@ -236,7 +236,14 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
 
                     // Handle "details.X" keys that were nested by PreparePushRecord.
                     var primaryMatchField = updateMatchCloudKey;
-                    var matchValue = ResolveRecordValue(record, primaryMatchField!);
+                    if (string.IsNullOrWhiteSpace(primaryMatchField))
+                    {
+                        result.Failed++;
+                        result.Errors.Add("Update match field is empty - cannot retry as PUT.");
+                        continue;
+                    }
+
+                    var matchValue = ResolveRecordValue(record, primaryMatchField);
 
                     if (string.IsNullOrEmpty(matchValue))
                     {
