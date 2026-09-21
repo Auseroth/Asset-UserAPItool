@@ -13,6 +13,7 @@ public sealed class SyncConfig
 
     public List<CloudTargetConfig> CloudTargets { get; set; } = [];
     public LoggingConfig Logging { get; set; } = new();
+    public KioskConfig Kiosk { get; set; } = new();
 }
 
 /// <summary>

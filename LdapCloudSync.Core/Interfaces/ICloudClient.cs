@@ -33,4 +33,9 @@ public sealed class SyncResult
     public int Skipped { get; set; }
     public int Failed { get; set; }
     public List<string> Errors { get; set; } = [];
+
+    /// <summary>
+    /// Last successful HTTP response body returned by the target API for this sync call.
+    /// </summary>
+    public string LastSuccessResponseBody { get; set; } = string.Empty;
 }

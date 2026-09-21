@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using LdapCloudSync.Core.Interfaces;
 using LdapCloudSync.Core.Models;
 using Serilog;
 
@@ -16,6 +17,49 @@ public sealed class ReftabClient : BaseCloudClient
     public ReftabClient(CloudTargetConfig target, HttpClient? httpClient = null, ILogger? logger = null)
         : base(target, httpClient, logger)
     {
+    }
+
+    public override async Task<SyncResult> PushRecordsAsync(
+        string category,
+        IReadOnlyList<Dictionary<string, object>> records)
+    {
+        _log.Information("Reftab PushRecordsAsync override engaged for category '{Category}' with {Count} record(s).",
+            category, records.Count);
+
+        if (!string.Equals(category, "assets", StringComparison.OrdinalIgnoreCase) || records.Count == 0)
+            return await base.PushRecordsAsync(category, records);
+
+        var passthrough = new List<Dictionary<string, object>>();
+        var result = new SyncResult();
+
+        foreach (var record in records)
+        {
+            if (TryGetMaintenanceKickoffPayload(record, out var aid, out var note, out var trigger))
+            {
+                _log.Information("Reftab maintenance kickoff detected for aid '{Aid}'. Using fetch+PUT update path.", aid);
+
+                var updateResult = await UpdateAssetMaintenanceByAidAsync(
+                    aid,
+                    note,
+                    string.IsNullOrWhiteSpace(trigger) ? "Yes" : trigger);
+
+                MergeSyncResult(result, updateResult);
+                continue;
+            }
+
+            passthrough.Add(record);
+        }
+
+        if (passthrough.Count > 0)
+        {
+            _log.Information("Reftab maintenance detector did not match {Count} record(s); falling back to base push path.",
+                passthrough.Count);
+
+            var baseResult = await base.PushRecordsAsync(category, passthrough);
+            MergeSyncResult(result, baseResult);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -130,6 +174,16 @@ public sealed class ReftabClient : BaseCloudClient
             record["disabled"] = false;
         }
 
+        // Reftab assets require a top-level title even on updates.
+        // For kiosk maintenance payloads, default title from aid when not mapped.
+        if (!isLoanee &&
+            (!record.TryGetValue("title", out var titleObj) || string.IsNullOrWhiteSpace(titleObj?.ToString())) &&
+            record.TryGetValue("aid", out var aidObj) &&
+            !string.IsNullOrWhiteSpace(aidObj?.ToString()))
+        {
+            record["title"] = aidObj!.ToString()!;
+        }
+
         // Restructure "details.*" keys into a nested details object
         var detailKeys = record.Keys
             .Where(k => k.StartsWith("details.", StringComparison.OrdinalIgnoreCase))
@@ -222,6 +276,237 @@ public sealed class ReftabClient : BaseCloudClient
         record.Clear();
         foreach (var kvp in ordered)
             record[kvp.Key] = kvp.Value;
+    }
+
+    private static bool TryGetMaintenanceKickoffPayload(
+        Dictionary<string, object> record,
+        out string aid,
+        out string maintenanceNote,
+        out string maintenanceTrigger)
+    {
+        aid = string.Empty;
+        maintenanceNote = string.Empty;
+        maintenanceTrigger = string.Empty;
+
+        if (!record.TryGetValue("aid", out var aidValue))
+            return false;
+
+        aid = aidValue?.ToString()?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(aid))
+            return false;
+
+        if (record.TryGetValue("details", out var detailsObj))
+        {
+            if (detailsObj is Dictionary<string, object> details)
+            {
+                maintenanceNote = details.TryGetValue("Maintenance Check-in Notes", out var note)
+                    ? note?.ToString()?.Trim() ?? string.Empty
+                    : string.Empty;
+
+                maintenanceTrigger = details.TryGetValue("Maintenance trigger", out var trigger)
+                    ? trigger?.ToString()?.Trim() ?? string.Empty
+                    : string.Empty;
+
+                return true;
+            }
+
+            if (detailsObj is JsonObject jsonDetails)
+            {
+                maintenanceNote = jsonDetails["Maintenance Check-in Notes"]?.ToString()?.Trim() ?? string.Empty;
+                maintenanceTrigger = jsonDetails["Maintenance trigger"]?.ToString()?.Trim() ?? string.Empty;
+                return true;
+            }
+        }
+
+        // Support flat keys in case details nesting has not yet occurred.
+        if (record.TryGetValue("details.Maintenance Check-in Notes", out var flatNote))
+            maintenanceNote = flatNote?.ToString()?.Trim() ?? string.Empty;
+
+        if (record.TryGetValue("details.Maintenance trigger", out var flatTrigger))
+            maintenanceTrigger = flatTrigger?.ToString()?.Trim() ?? string.Empty;
+
+        return record.Keys.Any(k => k.StartsWith("details.", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void MergeSyncResult(SyncResult aggregate, SyncResult addition)
+    {
+        aggregate.Created += addition.Created;
+        aggregate.Updated += addition.Updated;
+        aggregate.Skipped += addition.Skipped;
+        aggregate.Failed += addition.Failed;
+        aggregate.Errors.AddRange(addition.Errors);
+
+        if (!string.IsNullOrWhiteSpace(addition.LastSuccessResponseBody))
+            aggregate.LastSuccessResponseBody = addition.LastSuccessResponseBody;
+    }
+
+    /// <summary>
+    /// Resolves a Reftab asset by aid, updates maintenance fields, and PUTs back
+    /// the full asset payload with only those fields changed.
+    /// </summary>
+    public async Task<SyncResult> UpdateAssetMaintenanceByAidAsync(
+        string aid,
+        string maintenanceNote,
+        string maintenanceTriggerValue = "Yes")
+    {
+        var result = new SyncResult();
+
+        if (string.IsNullOrWhiteSpace(aid))
+        {
+            result.Failed = 1;
+            result.Errors.Add("Asset tag (aid) is required for Reftab maintenance update.");
+            return result;
+        }
+
+        try
+        {
+            var getRequest = BuildRequest(HttpMethod.Get, "/assets");
+            var getResponse = await _httpClient.SendAsync(getRequest);
+            var getBody = await getResponse.Content.ReadAsStringAsync();
+            getResponse.EnsureSuccessStatusCode();
+
+            var root = JsonNode.Parse(getBody);
+            JsonArray? items = root as JsonArray;
+
+            if (items is null && root is JsonObject wrapper)
+            {
+                items = wrapper["assets"]?.AsArray()
+                     ?? wrapper["data"]?.AsArray()
+                     ?? wrapper["results"]?.AsArray();
+            }
+
+            if (items is null)
+            {
+                result.Failed = 1;
+                result.Errors.Add("Reftab /assets response was not an array.");
+                return result;
+            }
+
+            JsonObject? matchedAsset = null;
+            foreach (var item in items)
+            {
+                if (item is not JsonObject obj) continue;
+                var existingAid = obj["aid"]?.ToString();
+                if (string.Equals(existingAid, aid, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedAsset = obj;
+                    break;
+                }
+            }
+
+            if (matchedAsset is null)
+            {
+                _log.Information("Asset aid '{Aid}' not found in /assets list response. Trying direct GET /assets/{Aid}.", aid);
+
+                var directGetRequest = BuildRequest(HttpMethod.Get, $"/assets/{aid}");
+                var directGetResponse = await _httpClient.SendAsync(directGetRequest);
+                var directGetBody = await directGetResponse.Content.ReadAsStringAsync();
+
+                if (directGetResponse.IsSuccessStatusCode)
+                {
+                    var directNode = JsonNode.Parse(directGetBody);
+                    if (directNode is JsonObject directObj)
+                    {
+                        matchedAsset = directObj;
+                    }
+                    else if (directNode is JsonArray arr && arr.Count > 0 && arr[0] is JsonObject arrObj)
+                    {
+                        matchedAsset = arrObj;
+                    }
+                }
+
+                if (matchedAsset is null)
+                {
+                    result.Failed = 1;
+                    result.Errors.Add($"No Reftab asset found for aid '{aid}' in list or direct lookup.");
+                    _log.Warning("No Reftab asset found for aid '{Aid}' in list or direct lookup.", aid);
+                    return result;
+                }
+            }
+
+            var putPayload = JsonNode.Parse(matchedAsset.ToJsonString()) as JsonObject;
+            if (putPayload is null)
+            {
+                result.Failed = 1;
+                result.Errors.Add("Failed to build Reftab PUT payload from matched asset.");
+                return result;
+            }
+
+            var details = putPayload["details"] as JsonObject ?? new JsonObject();
+            details["Maintenance Check-in Notes"] = maintenanceNote;
+            details["Maintenance trigger"] = maintenanceTriggerValue;
+            putPayload["details"] = details;
+
+            // Reftab endpoint identity is inconsistent across tenants/configurations.
+            // Try canonical aid from fetched record first, then input aid.
+            var endpointCandidates = new List<string>();
+            var canonicalAid = putPayload["aid"]?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(canonicalAid))
+                endpointCandidates.Add(canonicalAid);
+
+            if (!string.IsNullOrWhiteSpace(aid)
+                && !endpointCandidates.Contains(aid, StringComparer.OrdinalIgnoreCase))
+            {
+                endpointCandidates.Add(aid);
+            }
+
+            if (endpointCandidates.Count == 0)
+                endpointCandidates.Add(aid);
+
+            Exception? lastError = null;
+
+            foreach (var endpointId in endpointCandidates)
+            {
+                try
+                {
+                    _log.Information("Reftab maintenance update for aid '{Aid}' using endpoint id '{EndpointId}'.",
+                        aid, endpointId);
+
+                    var responseBody = await SendJsonAsync(HttpMethod.Put, $"/assets/{endpointId}", putPayload);
+
+                    result.Updated = 1;
+                    result.LastSuccessResponseBody = responseBody;
+                    return result;
+                }
+                catch (HttpRequestException ex)
+                {
+                    lastError = ex;
+
+                    // Some Reftab environments reject PUT when aid is present in payload
+                    // even though endpoint already identifies the asset.
+                    if (ex.Message.Contains("Asset number already in use", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            var payloadWithoutAid = JsonNode.Parse(putPayload.ToJsonString()) as JsonObject;
+                            payloadWithoutAid?.Remove("aid");
+
+                            _log.Warning("PUT /assets/{EndpointId} reported duplicate aid; retrying without 'aid' in payload.",
+                                endpointId);
+
+                            var retryBody = await SendJsonAsync(HttpMethod.Put, $"/assets/{endpointId}", payloadWithoutAid ?? putPayload);
+                            result.Updated = 1;
+                            result.LastSuccessResponseBody = retryBody;
+                            return result;
+                        }
+                        catch (Exception retryEx)
+                        {
+                            lastError = retryEx;
+                        }
+                    }
+                }
+            }
+
+            throw lastError ?? new InvalidOperationException("Reftab maintenance update failed with unknown error.");
+        }
+        catch (Exception ex)
+        {
+            result.Failed = 1;
+            result.Errors.Add(ex.Message);
+            _log.Warning(ex, "Reftab maintenance update failed for aid {Aid}", aid);
+            return result;
+        }
     }
 
     /// <summary>

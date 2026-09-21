@@ -61,8 +61,16 @@ public sealed class CloudTargetsViewModel : ViewModelBase
 
     private void AddTarget()
     {
-        var newConfig = new CloudTargetConfig { Name = $"Target {Targets.Count + 1}" };
-        var vm        = new CloudTargetViewModel(newConfig, _configService, _sourcesVm, _sourceFileService);
+        var newConfig = new CloudTargetConfig
+        {
+            Name = $"Target {Targets.Count + 1}",
+            Schedule = new ScheduleConfig
+            {
+                RunAtLaunch = false
+            }
+        };
+
+        var vm = new CloudTargetViewModel(newConfig, _configService, _sourcesVm, _sourceFileService);
         Targets.Add(vm);
         SelectedTarget = vm;
     }

@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using LdapCloudSync.Core.Models;
 using Serilog;
@@ -351,8 +353,38 @@ public sealed class SourceFileService
         return $"{baseName}-{i}";
     }
 
-    private void EnsureDirectoryExists() =>
+    private void EnsureDirectoryExists()
+    {
         Directory.CreateDirectory(SourceFilesDirectory);
+        EnsureWritableForStandardUsers();
+    }
+
+    private void EnsureWritableForStandardUsers()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        try
+        {
+            var directoryInfo = new DirectoryInfo(SourceFilesDirectory);
+            var security = directoryInfo.GetAccessControl();
+            var usersSid = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
+            var accessRule = new FileSystemAccessRule(
+                usersSid,
+                FileSystemRights.Modify | FileSystemRights.Synchronize,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow);
+
+            security.AddAccessRule(accessRule);
+            directoryInfo.SetAccessControl(security);
+        }
+        catch (Exception ex) when (
+            ex is UnauthorizedAccessException or PlatformNotSupportedException or SystemException)
+        {
+            _log.Debug(ex, "Unable to update source file permissions for {Directory}; continuing with existing ACLs.", SourceFilesDirectory);
+        }
+    }
 
     private static void ValidateName(string name)
     {

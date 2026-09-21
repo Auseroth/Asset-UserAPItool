@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "LdapCloudSync.App": {
+      "commandName": "Project",
+      "commandLineArgs": "--config"
+    }
+  }
+}

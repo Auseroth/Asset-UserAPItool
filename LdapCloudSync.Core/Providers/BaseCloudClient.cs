@@ -175,7 +175,8 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
             try
             {
                 PreparePushRecord(categoryConfig, record);
-                await SendJsonAsync(HttpMethod.Post, categoryConfig.PostEndpoint, record);
+                var postResponseBody = await SendJsonAsync(HttpMethod.Post, categoryConfig.PostEndpoint, record);
+                result.LastSuccessResponseBody = postResponseBody;
                 result.Created++;
 
                     var matchValue = !string.IsNullOrEmpty(updateMatchCloudKey) && record.TryGetValue(updateMatchCloudKey, out var mv)
@@ -222,7 +223,8 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
                         try
                         {
                             var directEndpoint = categoryConfig.PutEndpoint.Replace("{id}", directId);
-                            await SendJsonAsync(HttpMethod.Put, directEndpoint, record);
+                            var directPutResponseBody = await SendJsonAsync(HttpMethod.Put, directEndpoint, record);
+                            result.LastSuccessResponseBody = directPutResponseBody;
                             result.Updated++;
                             continue;
                         }
@@ -281,7 +283,8 @@ public abstract class BaseCloudClient : ICloudClient, ICloudSourceClient, IDispo
                     if (existingId is not null)
                     {
                         var endpoint = categoryConfig.PutEndpoint.Replace("{id}", existingId);
-                        await SendJsonAsync(HttpMethod.Put, endpoint, record);
+                        var putResponseBody = await SendJsonAsync(HttpMethod.Put, endpoint, record);
+                        result.LastSuccessResponseBody = putResponseBody;
                         result.Updated++;
                     }
                     else

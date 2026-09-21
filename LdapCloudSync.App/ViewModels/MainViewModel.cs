@@ -26,6 +26,7 @@ public sealed class MainViewModel : ViewModelBase
         TriggerSyncCommand         = new AsyncRelayCommand(TriggerSyncAsync, () => IsServiceRunning);
         TriggerTestSyncCommand     = new AsyncRelayCommand(TriggerTestSyncAsync);
         ReloadServiceConfigCommand = new AsyncRelayCommand(ReloadServiceConfigAsync, () => IsServiceRunning);
+        OpenAssetCheckInCommand    = new RelayCommand(OpenAssetCheckInWindow);
 
         // When any AD source discovers OUs, rebuild the target OU selectors
         // for targets that use that source (or have no source assigned).
@@ -78,6 +79,7 @@ public sealed class MainViewModel : ViewModelBase
     public ICommand TriggerSyncCommand         { get; }
     public ICommand TriggerTestSyncCommand     { get; }
     public ICommand ReloadServiceConfigCommand { get; }
+    public ICommand OpenAssetCheckInCommand    { get; }
 
     // -- OU discovery ------------------------------------------------------
 
@@ -135,6 +137,26 @@ public sealed class MainViewModel : ViewModelBase
         CloudTargetsVm.RebuildAllOUSelections(sourceId, computerOUs, userOUs);
     }
 
+    private void ApplyDraftConfigurationToCurrent()
+    {
+        SourcesVm.ApplyToConfig();
+        CloudTargetsVm.ApplyToConfig();
+    }
+
+    private void OpenAssetCheckInWindow()
+    {
+        try
+        {
+            var owner = System.Windows.Application.Current.MainWindow;
+            App.ShowOrActivateAssetCheckInWindow(owner);
+            StatusMessage = "Asset Check-In window opened.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Unable to open Asset Check-In window: {ex.Message}";
+        }
+    }
+
     // -- Save --------------------------------------------------------------
 
     private async Task SaveAsync()
@@ -144,8 +166,7 @@ public sealed class MainViewModel : ViewModelBase
             IsBusy = true;
             StatusMessage = "Saving configuration...";
 
-            SourcesVm.ApplyToConfig();
-            CloudTargetsVm.ApplyToConfig();
+            ApplyDraftConfigurationToCurrent();
 
             _configService.Save();
             StatusMessage = "Configuration saved successfully.";

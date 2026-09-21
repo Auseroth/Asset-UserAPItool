@@ -13,6 +13,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
 {
     private readonly ConfigService _configService;
     internal CloudTargetConfig Config { get; }
+    public string Id => Config.Id;
 
     // Saved selections loaded from config, applied when OUs are discovered
     internal List<string> _savedAssetsOUs = [];
@@ -414,11 +415,25 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
     #region Schedule
 
+    private bool _runAtLaunch = false;
+    public bool RunAtLaunch
+    {
+        get => _runAtLaunch;
+        set => SetProperty(ref _runAtLaunch, value);
+    }
+
     private bool _coupledSchedule = true;
     public bool CoupledSchedule
     {
         get => _coupledSchedule;
         set => SetProperty(ref _coupledSchedule, value);
+    }
+
+    private bool _primaryScheduleEnabled = false;
+    public bool PrimaryScheduleEnabled
+    {
+        get => _primaryScheduleEnabled;
+        set => SetProperty(ref _primaryScheduleEnabled, value);
     }
 
     private ScheduleType _primaryScheduleType = ScheduleType.Interval;
@@ -451,6 +466,13 @@ public sealed class CloudTargetViewModel : ViewModelBase
             if (SetProperty(ref _primaryDailyAtTime, value))
                 OnPropertyChanged(nameof(PrimaryDailyAtTimeText));
         }
+    }
+
+    private bool _usersScheduleEnabled = false;
+    public bool UsersScheduleEnabled
+    {
+        get => _usersScheduleEnabled;
+        set => SetProperty(ref _usersScheduleEnabled, value);
     }
 
     private ScheduleType _usersScheduleType = ScheduleType.Interval;
@@ -636,10 +658,21 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         var current = _selectedSourceDisplay;
         var displayFromSourceId = _sourcesVm.GetDisplayOptionForSourceId(SourceId, _sourceFileService);
+        var kioskSourceId = $"{SourceFileService.FileSourcePrefix}{KioskConfig.AssetCheckInSourceFileName}";
+        var isKioskSource = string.Equals(SourceId, kioskSourceId, StringComparison.OrdinalIgnoreCase);
 
         AvailableSourceOptions.Clear();
         foreach (var opt in _sourcesVm.GetAllSourceOptions(_sourceFileService))
             AvailableSourceOptions.Add(opt);
+
+        if (isKioskSource)
+        {
+            // Keep the kiosk source selected internally even though it is intentionally
+            // omitted from the normal source list shown in the UI.
+            _selectedSourceDisplay = displayFromSourceId;
+            OnPropertyChanged(nameof(SelectedSourceDisplay));
+            return;
+        }
 
         _selectedSourceDisplay = AvailableSourceOptions.Contains(displayFromSourceId)
             ? displayFromSourceId
@@ -1170,25 +1203,60 @@ public sealed class CloudTargetViewModel : ViewModelBase
         // File source path
         if (SourceId.StartsWith(SourceFileService.FileSourcePrefix, StringComparison.Ordinal))
         {
+            var fileName = SourceId[SourceFileService.FileSourcePrefix.Length..];
+
             try
             {
-                var fileName = SourceId[SourceFileService.FileSourcePrefix.Length..];
                 var records = await _sourceFileService.ReadRecordsAsync(fileName, "assets");
                 var fields = records
                     .SelectMany(r => r.Keys)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (string.Equals(fileName, KioskConfig.AssetCheckInSourceFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var requiredField in new[] { "asset_tag", "serial_number", "check_in_note", "maintenance_trigger" })
+                    {
+                        if (!fields.Contains(requiredField, StringComparer.OrdinalIgnoreCase))
+                            fields.Add(requiredField);
+                    }
+                }
+
+                fields = fields
                     .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
                 DiscoveredAdComputerAttributes.Clear();
                 foreach (var f in fields) DiscoveredAdComputerAttributes.Add(f);
 
-                if (records.Count > 0) SetAssetSampleRecord(records[0]);
+                if (records.Count > 0)
+                {
+                    var sample = new Dictionary<string, string>(records[0], StringComparer.OrdinalIgnoreCase);
+                    if (string.Equals(fileName, KioskConfig.AssetCheckInSourceFileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        sample.TryAdd("asset_tag", string.Empty);
+                        sample.TryAdd("serial_number", string.Empty);
+                        sample.TryAdd("check_in_note", string.Empty);
+                        sample.TryAdd("maintenance_trigger", "yes");
+                    }
+                    SetAssetSampleRecord(sample);
+                }
+
                 CloudConnectionStatus = $"Discovered {fields.Count} source fields from file source '{fileName}'.";
             }
             catch (Exception ex)
             {
-                CloudConnectionStatus = $"File source discovery failed: {ex.Message}";
+                if (string.Equals(fileName, KioskConfig.AssetCheckInSourceFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var kioskTemplateFields = new[] { "asset_tag", "serial_number", "check_in_note", "maintenance_trigger" };
+                    DiscoveredAdComputerAttributes.Clear();
+                    foreach (var f in kioskTemplateFields) DiscoveredAdComputerAttributes.Add(f);
+                    CloudConnectionStatus = "Loaded Check-in Kiosk template fields (no payload file found yet).";
+                }
+                else
+                {
+                    CloudConnectionStatus = $"File source discovery failed: {ex.Message}";
+                }
             }
             return;
         }
@@ -1413,11 +1481,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
             UserMappings.Add(new FieldMappingViewModel(m));
 
         // Schedule
+        RunAtLaunch = Config.Schedule.RunAtLaunch;
         CoupledSchedule = Config.Schedule.CoupledSchedule;
+        PrimaryScheduleEnabled = Config.Schedule.PrimarySchedule.Enabled;
         PrimaryScheduleType = Config.Schedule.PrimarySchedule.Type;
         PrimaryIntervalHours = Config.Schedule.PrimarySchedule.Interval.TotalHours;
         PrimaryCronExpression = Config.Schedule.PrimarySchedule.CronExpression;
         PrimaryDailyAtTime = Config.Schedule.PrimarySchedule.DailyAtTime;
+        UsersScheduleEnabled = Config.Schedule.UsersSchedule.Enabled;
         UsersScheduleType = Config.Schedule.UsersSchedule.Type;
         UsersIntervalHours = Config.Schedule.UsersSchedule.Interval.TotalHours;
         UsersCronExpression = Config.Schedule.UsersSchedule.CronExpression;
@@ -1590,7 +1661,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Assets.SecondaryUpdateMatchSourceField = AssetsSecondaryUpdateMatchAdField;
         Config.Assets.SecondaryUpdateMatchCloudField = AssetsSecondaryUpdateMatchCloudField;
 
-        Config.Users.Enabled = UsersEnabled;
+        // If a target is configured for the kiosk source, keep users disabled unless
+        // users explicitly have their own source and mappings. This prevents kiosk
+        // launches from trying to run a users sync with no user configuration.
+        var isKioskSourceTarget = string.Equals(Config.SourceId,
+            $"{SourceFileService.FileSourcePrefix}{KioskConfig.AssetCheckInSourceFileName}",
+            StringComparison.OrdinalIgnoreCase);
+
+        Config.Users.Enabled = UsersEnabled && !isKioskSourceTarget;
         Config.Users.GetEndpoint = UsersGetEndpoint;
         Config.Users.PostEndpoint = UsersPostEndpoint;
         Config.Users.PutEndpoint = UsersPutEndpoint;
@@ -1607,11 +1685,22 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Users.SecondaryUpdateMatchSourceField = UsersSecondaryUpdateMatchAdField;
         Config.Users.SecondaryUpdateMatchCloudField = UsersSecondaryUpdateMatchCloudField;
 
+        if (isKioskSourceTarget)
+        {
+            // Clear any stale user mappings/selection from previous config edits.
+            Config.Users.FieldMappings = [];
+            Config.Users.Enabled = false;
+            UsersEnabled = false;
+        }
+
+        Config.Schedule.RunAtLaunch = RunAtLaunch;
         Config.Schedule.CoupledSchedule = CoupledSchedule;
+        Config.Schedule.PrimarySchedule.Enabled = PrimaryScheduleEnabled;
         Config.Schedule.PrimarySchedule.Type = PrimaryScheduleType;
         Config.Schedule.PrimarySchedule.Interval = TimeSpan.FromHours(PrimaryIntervalHours);
         Config.Schedule.PrimarySchedule.CronExpression = PrimaryCronExpression;
         Config.Schedule.PrimarySchedule.DailyAtTime = PrimaryDailyAtTime;
+        Config.Schedule.UsersSchedule.Enabled = UsersScheduleEnabled;
         Config.Schedule.UsersSchedule.Type = UsersScheduleType;
         Config.Schedule.UsersSchedule.Interval = TimeSpan.FromHours(UsersIntervalHours);
         Config.Schedule.UsersSchedule.CronExpression = UsersCronExpression;

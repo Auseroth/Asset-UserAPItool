@@ -6,6 +6,12 @@ namespace LdapCloudSync.Core.Models;
 public sealed class ScheduleConfig
 {
     /// <summary>
+    /// When true, this target is allowed to run an immediate sync evaluation on service start.
+    /// When false, first scheduled run is deferred until the next normal interval/time window.
+    /// </summary>
+    public bool RunAtLaunch { get; set; } = false;
+
+    /// <summary>
     /// When true, assets and users share the same schedule.
     /// When false, each has its own schedule.
     /// </summary>
@@ -25,6 +31,11 @@ public sealed class ScheduleConfig
 
 public sealed class ScheduleEntry
 {
+    /// <summary>
+    /// When false, this schedule entry is disabled and no scheduled sync is run.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
     public ScheduleType Type { get; set; } = ScheduleType.Interval;
 
     /// <summary>

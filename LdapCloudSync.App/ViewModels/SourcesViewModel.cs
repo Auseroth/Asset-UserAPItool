@@ -161,8 +161,16 @@ public sealed class SourcesViewModel : ViewModelBase
         var options = new List<string>();
         foreach (var source in Sources)
             options.Add($"{source.Name} [{(source.IsAdSource ? "AD" : "Cloud")}]");
-        foreach (var fileName in _sourceFileService.GetSavedFileNames())
+        var fileNames = _sourceFileService.GetSavedFileNames().ToList();
+
+        foreach (var fileName in fileNames.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.Equals(fileName, KioskConfig.AssetCheckInSourceFileName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             options.Add($"{fileName} [File]");
+        }
+
         return options;
     }
 

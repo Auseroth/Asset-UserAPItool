@@ -138,8 +138,27 @@ public sealed class SyncWorker : BackgroundService
         DateTime nowUtc,
         CancellationToken stoppingToken)
     {
+        if (!schedule.Enabled)
+        {
+            _log.Debug("Schedule disabled for {Target} / {Category}", target.Name, category);
+            return TimeSpan.FromHours(1);
+        }
+
         var key = $"{target.Id}:{category}";
-        var lastRun = _lastRunTimes.GetValueOrDefault(key, DateTime.MinValue);
+        var hasPriorRun = _lastRunTimes.TryGetValue(key, out var lastRun);
+
+        if (!hasPriorRun)
+        {
+            if (!target.Schedule.RunAtLaunch)
+            {
+                // Seed baseline at startup so first run waits for next window.
+                _lastRunTimes[key] = nowUtc;
+                return ScheduleEvaluator.GetDelayUntilNextRun(schedule, nowUtc);
+            }
+
+            lastRun = DateTime.MinValue;
+        }
+
         var nextRun = ScheduleEvaluator.GetNextRunTime(schedule, lastRun);
 
         if (nextRun is null || nextRun > nowUtc)
