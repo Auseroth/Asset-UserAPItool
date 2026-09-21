@@ -8,4 +8,14 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
     }
+
+    private void OpenUpdateWindow_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new UpdateWindow
+        {
+            Owner = this
+        };
+
+        dialog.ShowDialog();
+    }
 }
