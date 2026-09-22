@@ -3,10 +3,13 @@
   <PropertyGroup>
 	<OutputType>WinExe</OutputType>
 	<TargetFramework>net8.0-windows</TargetFramework>
+	<RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
 	<RootNamespace>LdapCloudSync.ConfigLauncher</RootNamespace>
 	<Nullable>enable</Nullable>
 	<ImplicitUsings>enable</ImplicitUsings>
-	<AssemblyName>LdapCloudSync.ConfigLauncher</AssemblyName>
+	<AssemblyName>ConNexus.ConfigLauncher</AssemblyName>
+	<Title>ConNexus.ConfigLauncher</Title>
+	<Product>ConNexus</Product>
   </PropertyGroup>
 
   <ItemGroup>

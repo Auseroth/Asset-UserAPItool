@@ -2,7 +2,11 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
     <RootNamespace>LdapCloudSync.Service</RootNamespace>
+    <AssemblyName>ConNexus.Service</AssemblyName>
+    <Title>ConNexus.Service</Title>
+    <Product>ConNexus</Product>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

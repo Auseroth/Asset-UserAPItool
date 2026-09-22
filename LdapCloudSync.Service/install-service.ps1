@@ -1,13 +1,13 @@
 #Requires -RunAsAdministrator
 <#
-    Installs the Connexus Windows Service.
+    Installs the ConNexus Windows Service.
     Run from an elevated PowerShell prompt.
 #>
 
-$ServiceName = "Connexus"
-$DisplayName = "Connexus - AD to Cloud Sync Service"
+$ServiceName = "ConNexus"
+$DisplayName = "ConNexus - AD to Cloud Sync Service"
 $Description = "Launches Active Directory objects to cloud services (Reftab, Snipe-IT, etc.)"
-$ExePath = Join-Path $PSScriptRoot "LdapCloudSync.Service.exe"
+$ExePath = Join-Path $PSScriptRoot "ConNexus.Service.exe"
 
 if (-not (Test-Path $ExePath)) {
     Write-Error "Service executable not found at: $ExePath"

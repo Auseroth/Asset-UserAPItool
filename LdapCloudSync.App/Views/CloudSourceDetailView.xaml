@@ -1,7 +1,7 @@
 <UserControl x:Class="LdapCloudSync.App.Views.CloudSourceDetailView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:models="clr-namespace:LdapCloudSync.Core.Models;assembly=LdapCloudSync.Core">
+             xmlns:models="clr-namespace:LdapCloudSync.Core.Models;assembly=ConNexus.Core">
 
     <StackPanel>
 

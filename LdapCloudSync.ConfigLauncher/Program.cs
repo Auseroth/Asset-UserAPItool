@@ -24,12 +24,12 @@ internal static class Program
     {
         var candidates = new[]
         {
-            Path.Combine(AppContext.BaseDirectory, "LdapCloudSync.App.exe"),
-            Path.Combine(AppContext.BaseDirectory, "..", "LdapCloudSync.App.exe"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "LdapCloudSync.App.exe"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "LdapCloudSync.App.exe"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "LdapCloudSync.App", "bin", "Debug", "net8.0-windows", "LdapCloudSync.App.exe"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "LdapCloudSync.App", "bin", "Release", "net8.0-windows", "LdapCloudSync.App.exe")
+            Path.Combine(AppContext.BaseDirectory, "ConNexus.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "ConNexus.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "ConNexus.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "ConNexus.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "LdapCloudSync.App", "bin", "Debug", "net8.0-windows", "ConNexus.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "LdapCloudSync.App", "bin", "Release", "net8.0-windows", "ConNexus.exe")
         };
 
         foreach (var candidate in candidates)

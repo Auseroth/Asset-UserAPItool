@@ -1,10 +1,10 @@
 #Requires -RunAsAdministrator
 <#
-    Uninstalls the Connexus Windows Service.
+    Uninstalls the ConNexus Windows Service.
     Run from an elevated PowerShell prompt.
 #>
 
-$ServiceName = "Connexus"
+$ServiceName = "ConNexus"
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if (-not $existing) {
@@ -20,4 +20,4 @@ Write-Host "Removing service '$ServiceName'..." -ForegroundColor Cyan
 sc.exe delete $ServiceName | Out-Null
 
 Write-Host "Service uninstalled successfully." -ForegroundColor Green
-Write-Host "Note: Configuration data in $env:ProgramData\Connexus was NOT removed." -ForegroundColor Yellow
+Write-Host "Note: Configuration data in $env:ProgramData\ConNexus was NOT removed." -ForegroundColor Yellow

@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>LdapCloudSync.Core</RootNamespace>
+    <AssemblyName>ConNexus.Core</AssemblyName>
+    <Title>ConNexus.Core</Title>
+    <Product>ConNexus</Product>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
