@@ -9,7 +9,7 @@ namespace LdapCloudSync.Core.Ipc;
 /// </summary>
 public sealed class IpcServer : IDisposable
 {
-    public const string PipeName = "LDAPult_ServicePipe";
+    public const string PipeName = "Connexus_ServicePipe";
 
     private readonly Func<IpcCommand, Task<IpcResponse>> _commandHandler;
     private readonly ILogger _log;

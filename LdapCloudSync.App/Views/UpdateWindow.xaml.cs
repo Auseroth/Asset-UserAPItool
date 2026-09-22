@@ -19,7 +19,7 @@ public partial class UpdateWindow : Window
     {
         InitializeComponent();
 
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("LDAPult-UpdateChecker");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Connexus-UpdateChecker");
         _httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
 
         ReleaseUrlTextBox.Text = DefaultReleaseUrl;
@@ -139,10 +139,10 @@ public partial class UpdateWindow : Window
         try
         {
             var fileName = string.IsNullOrWhiteSpace(_downloadFileName)
-                ? "LDAPult-Update.exe"
+                ? "Connexus-Update.exe"
                 : _downloadFileName;
 
-            var updateDirectory = Path.Combine(Path.GetTempPath(), "LDAPult", "Updates");
+            var updateDirectory = Path.Combine(Path.GetTempPath(), "Connexus", "Updates");
             Directory.CreateDirectory(updateDirectory);
 
             var localFilePath = Path.Combine(updateDirectory, fileName);

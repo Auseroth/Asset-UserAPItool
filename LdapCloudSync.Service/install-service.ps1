@@ -1,11 +1,11 @@
 #Requires -RunAsAdministrator
 <#
-    Installs the LDAPult Windows Service.
+    Installs the Connexus Windows Service.
     Run from an elevated PowerShell prompt.
 #>
 
-$ServiceName = "LDAPult"
-$DisplayName = "LDAPult - AD to Cloud Sync Service"
+$ServiceName = "Connexus"
+$DisplayName = "Connexus - AD to Cloud Sync Service"
 $Description = "Launches Active Directory objects to cloud services (Reftab, Snipe-IT, etc.)"
 $ExePath = Join-Path $PSScriptRoot "LdapCloudSync.Service.exe"
 
@@ -33,7 +33,7 @@ New-Service -Name $ServiceName `
     -StartupType Automatic
 
 # Create ProgramData directory
-$dataDir = Join-Path $env:ProgramData "LDAPult"
+$dataDir = Join-Path $env:ProgramData "ConNexus"
 if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
     Write-Host "Created data directory: $dataDir" -ForegroundColor Green

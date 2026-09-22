@@ -1,10 +1,10 @@
 #Requires -RunAsAdministrator
 <#
-    Uninstalls the LdapCloudSync Windows Service.
+    Uninstalls the Connexus Windows Service.
     Run from an elevated PowerShell prompt.
 #>
 
-$ServiceName = "LdapCloudSync"
+$ServiceName = "Connexus"
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if (-not $existing) {
@@ -20,4 +20,4 @@ Write-Host "Removing service '$ServiceName'..." -ForegroundColor Cyan
 sc.exe delete $ServiceName | Out-Null
 
 Write-Host "Service uninstalled successfully." -ForegroundColor Green
-Write-Host "Note: Configuration data in $env:ProgramData\LdapCloudSync was NOT removed." -ForegroundColor Yellow
+Write-Host "Note: Configuration data in $env:ProgramData\Connexus was NOT removed." -ForegroundColor Yellow

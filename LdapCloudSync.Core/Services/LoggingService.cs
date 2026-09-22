@@ -10,7 +10,7 @@ namespace LdapCloudSync.Core.Services;
 public static class LoggingService
 {
     private static readonly string LogDirectory =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LDAPult", "Logs");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Connexus", "Logs");
 
     /// <summary>
     /// Initializes the global Serilog logger with all configured sinks.

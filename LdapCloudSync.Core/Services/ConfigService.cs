@@ -8,12 +8,12 @@ namespace LdapCloudSync.Core.Services;
 
 /// <summary>
 /// Handles loading, saving, and managing the JSON configuration file.
-/// Config is stored in C:\ProgramData\LdapCloudSync\.
+/// Config is stored in C:\ProgramData\Connexus\.
 /// </summary>
 public sealed class ConfigService
 {
     private static readonly string ConfigDirectory =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LDAPult");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Connexus");
 
     private static readonly string ConfigFilePath =
         Path.Combine(ConfigDirectory, "config.json");

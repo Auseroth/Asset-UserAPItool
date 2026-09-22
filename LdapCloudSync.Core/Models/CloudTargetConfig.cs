@@ -13,7 +13,7 @@ public sealed class CloudTargetConfig
     /// The Id of the CloudSourceConfig this target pulls data from.
     /// If empty, the orchestrator falls back to the first available AD source.
     /// Set to the reserved prefix "file:" + filename to use a saved JSON file source.
-    /// Example: "file:MyExport" reads from ProgramData/LDAPult/sourceFiles/MyExport.json
+    /// Example: "file:MyExport" reads from ProgramData/Connexus/sourceFiles/MyExport.json
     /// </summary>
     public string SourceId { get; set; } = string.Empty;
 

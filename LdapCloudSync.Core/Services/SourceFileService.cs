@@ -7,7 +7,7 @@ using Serilog;
 namespace LdapCloudSync.Core.Services;
 
 /// <summary>
-/// Manages saved JSON source files stored in ProgramData/LDAPult/sourceFiles/.
+/// Manages saved JSON source files stored in ProgramData/ConNexus/sourceFiles/.
 /// Files saved here appear as "File" source options on cloud targets,
 /// allowing a one-time GET retrieve to be manually edited and pushed.
 /// </summary>
@@ -15,7 +15,7 @@ public sealed class SourceFileService
 {
     private static readonly string SourceFilesDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "LDAPult", "sourceFiles");
+        "ConNexus", "sourceFiles");
 
     private readonly ILogger _log;
 

@@ -33,7 +33,7 @@ public sealed class SyncWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _log.Information("=== LdapCloudSync Service Starting ===");
+        _log.Information("=== Connexus Service Starting ===");
 
         // Load configuration
         _configService.Load();
@@ -75,7 +75,7 @@ public sealed class SyncWorker : BackgroundService
             }
         }
 
-        _log.Information("=== LdapCloudSync Service Stopping ===");
+        _log.Information("=== Connexus Service Stopping ===");
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

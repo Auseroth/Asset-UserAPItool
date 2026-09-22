@@ -16,7 +16,7 @@ public sealed class ApRecordCache
 {
     private static readonly string CacheDirectory =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "LDAPult", "ap-cache");
+            "Connexus", "ap-cache");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

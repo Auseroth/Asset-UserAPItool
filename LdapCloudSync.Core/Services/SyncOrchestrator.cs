@@ -94,7 +94,7 @@ public sealed class SyncOrchestrator : ISyncOrchestrator
 
             if (isFileSource)
             {
-                // File source: read from saved JSON in ProgramData/LDAPult/sourceFiles/
+                // File source: read from saved JSON in ProgramData/ConNexus/sourceFiles/
                 fileSourceName = sourceId[SourceFileService.FileSourcePrefix.Length..];
                 _log.Information("Source: file '{FileName}' for {Target}/{Category}", fileSourceName, target.Name, category);
 

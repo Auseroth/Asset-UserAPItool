@@ -74,7 +74,7 @@ public sealed class SourcesViewModel : ViewModelBase
     //  File sources 
 
     /// <summary>
-    /// Names of JSON files saved in ProgramData/LDAPult/sourceFiles/.
+    /// Names of JSON files saved in ProgramData/Connexus/sourceFiles/.
     /// Each can be referenced as a source by cloud targets using "file:{name}".
     /// </summary>
     public ObservableCollection<string> FileSourceNames { get; } = [];

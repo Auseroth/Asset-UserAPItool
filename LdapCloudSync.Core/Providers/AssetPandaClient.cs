@@ -53,7 +53,7 @@ public sealed class AssetPandaClient : BaseCloudClient
         request.Headers.TryAddWithoutValidation("accept", "application/json");
         request.Headers.TryAddWithoutValidation("Access-Key-Id", conn.ApiKey);
         request.Headers.TryAddWithoutValidation("Access-Key-Secret", conn.ApiSecret);
-        request.Headers.TryAddWithoutValidation("User-Agent", "LDAPult");
+        request.Headers.TryAddWithoutValidation("User-Agent", "Connexus");
     }
 
     /// <summary>

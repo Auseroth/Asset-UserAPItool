@@ -17,7 +17,7 @@ public static class Program
 
         try
         {
-            Log.Information("LdapCloudSync Service starting...");
+            Log.Information("Connexus Service starting...");
 
             var builder = Host.CreateApplicationBuilder(args);
 
@@ -28,7 +28,7 @@ public static class Program
             // Enable running as a Windows Service
             builder.Services.AddWindowsService(options =>
             {
-                options.ServiceName = "LdapCloudSync";
+                options.ServiceName = "Connexus";
             });
 
             var host = builder.Build();

@@ -14,11 +14,11 @@ ShowUnInstDetails show
 !define SERVICE_PROJECT_DIR "..\LdapCloudSync.Service\bin\Release\net8.0-windows"
 !define CONFIG_LAUNCHER_DIR "..\LdapCloudSync.ConfigLauncher\bin\Release\net8.0-windows"
 
-!define APP_EXE "LdapCloudSync.App.exe"
+!define APP_EXE "Connexus.exe"
 !define SERVICE_EXE "LdapCloudSync.Service.exe"
 !define CONFIG_LAUNCHER_EXE "LdapCloudSync.ConfigLauncher.exe"
 
-!define SERVICE_NAME "Connexus"
+!define SERVICE_NAME "LdapCloudSync"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -105,7 +105,6 @@ Section "Uninstall"
 	Delete "$INSTDIR\LdapCloudSync.ConfigLauncher.deps.json"
 	Delete "$INSTDIR\LdapCloudSync.ConfigLauncher.runtimeconfig.json"
 
-	DeleteRegKey HKLM "Software\Connexus"
+	DeleteRegKey HKLM "Software\LdapCloudSync"
 	RMDir "$INSTDIR"
 SectionEnd
-
