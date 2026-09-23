@@ -9,11 +9,12 @@ namespace LdapCloudSync.App.Views;
 
 public partial class UpdateWindow : Window
 {
-    private const string DefaultReleaseUrl = "https://github.com/Auseroth/Asset-UserAPItool/releases/latest";
+    private const string DefaultReleaseUrl = "https://api.github.com/repos/Auseroth/Asset-UserAPItool/releases/latest";
 
     private readonly HttpClient _httpClient = new();
     private string? _downloadUrl;
     private string? _downloadFileName;
+    private bool _isUpdateAvailable;
 
     public UpdateWindow()
     {
@@ -26,6 +27,7 @@ public partial class UpdateWindow : Window
         CurrentVersionTextBlock.Text = FormatVersion(GetCurrentVersion());
         LatestVersionTextBlock.Text = "Not checked";
         StatusTextBlock.Text = "Ready.";
+        DownloadAndRunButton.IsEnabled = false;
     }
 
     protected override void OnClosed(EventArgs e)
@@ -43,11 +45,12 @@ public partial class UpdateWindow : Window
     {
         _downloadUrl = null;
         _downloadFileName = null;
+        _isUpdateAvailable = false;
 
         var releaseUrl = ReleaseUrlTextBox.Text?.Trim() ?? string.Empty;
         if (!TryBuildLatestReleaseApiUrl(releaseUrl, out var apiUrl, out var repoName))
         {
-            StatusTextBlock.Text = "Enter a valid GitHub repository or releases URL.";
+            StatusTextBlock.Text = "Enter a valid GitHub API repository or releases URL.";
             LatestVersionTextBlock.Text = "Unknown";
             return false;
         }
@@ -91,22 +94,29 @@ public partial class UpdateWindow : Window
             if (TryParseVersion(displayVersion, out var latestVersion))
             {
                 if (latestVersion > currentVersion)
-                    StatusTextBlock.Text = _downloadUrl is null
-                        ? "A newer version is available, but no EXE asset was found."
-                        : "A newer version is available. Click Update Now to install.";
+                {
+                    _isUpdateAvailable = !string.IsNullOrWhiteSpace(_downloadUrl);
+                    StatusTextBlock.Text = _isUpdateAvailable
+                        ? "A newer version is available. Click Update Now to install."
+                        : "A newer version is available, but no EXE asset was found.";
+                }
                 else
-                    StatusTextBlock.Text = _downloadUrl is null
-                        ? "You are up to date."
-                        : "You are up to date. You can still click Update Now to reinstall latest.";
+                {
+                    _downloadUrl = null;
+                    _downloadFileName = null;
+                    _isUpdateAvailable = false;
+                    StatusTextBlock.Text = "You are up to date.";
+                }
             }
             else
             {
-                StatusTextBlock.Text = _downloadUrl is null
-                    ? "Latest version found, but no EXE asset was detected."
-                    : "Latest release detected. Click Update Now to install.";
+                _downloadUrl = null;
+                _downloadFileName = null;
+                _isUpdateAvailable = false;
+                StatusTextBlock.Text = "Latest release version could not be parsed.";
             }
 
-            return !string.IsNullOrWhiteSpace(_downloadUrl);
+            return _isUpdateAvailable;
         }
         catch (Exception ex)
         {
@@ -117,18 +127,18 @@ public partial class UpdateWindow : Window
         finally
         {
             CheckUpdatesButton.IsEnabled = true;
-            DownloadAndRunButton.IsEnabled = true;
+            DownloadAndRunButton.IsEnabled = _isUpdateAvailable;
         }
     }
 
     private async void DownloadAndRun_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_downloadUrl))
+        if (!_isUpdateAvailable || string.IsNullOrWhiteSpace(_downloadUrl))
         {
             var foundAsset = await CheckForUpdatesCoreAsync();
-            if (!foundAsset || string.IsNullOrWhiteSpace(_downloadUrl))
+            if (!foundAsset || !_isUpdateAvailable || string.IsNullOrWhiteSpace(_downloadUrl))
             {
-                StatusTextBlock.Text = "No update EXE found in latest release.";
+                StatusTextBlock.Text = "No newer update EXE is available.";
                 return;
             }
         }
@@ -184,17 +194,44 @@ public partial class UpdateWindow : Window
         if (!Uri.TryCreate(releaseUrl, UriKind.Absolute, out var uri))
             return false;
 
-        if (!uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
-            return false;
-
         var parts = uri.AbsolutePath
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (parts.Length < 2)
+        string? owner = null;
+        string? repo = null;
+
+        if (uri.Host.Equals("api.github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            // Supports /repos/{owner}/{repo}/releases/latest
+            if (parts.Length >= 3 && parts[0].Equals("repos", StringComparison.OrdinalIgnoreCase))
+            {
+                owner = parts[1];
+                repo = parts[2];
+            }
+            else if (parts.Length >= 2)
+            {
+                owner = parts[0];
+                repo = parts[1];
+            }
+        }
+        else if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
+                 uri.Host.Equals("www.github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            // Supports /{owner}/{repo}/releases/latest
+            if (parts.Length >= 2)
+            {
+                owner = parts[0];
+                repo = parts[1];
+            }
+        }
+        else
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return false;
 
-        var owner = parts[0];
-        var repo = parts[1];
         repository = $"{owner}/{repo}";
         apiUrl = $"https://api.github.com/repos/{owner}/{repo}/releases/latest";
         return true;
