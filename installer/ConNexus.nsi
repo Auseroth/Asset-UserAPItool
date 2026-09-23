@@ -17,7 +17,7 @@
 !define SERVICE_EXE "ConNexus.Service.exe"
 !define CONFIG_LAUNCHER_EXE "ConNexus.ConfigLauncher.exe"
 !define SERVICE_NAME "ConNexus"
-!define VERSION "1.0.0.0"
+!define VERSION "1.0.0.2"
 !define APP_ICON "${PUBLISH_DIR}\Connexus.ico"
 
 Name "${APPNAME}"
@@ -175,28 +175,26 @@ Section "Install"
 
         SetShellVarContext all
         CreateDirectory "$SMPROGRAMS\${APPNAME}"
-        CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME} - Kiosk.lnk" "$INSTDIR\${APP_EXE}"
-        IfFileExists "$INSTDIR\${CONFIG_LAUNCHER_EXE}" 0 no_admin_shortcut_programs_update
-            CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME} - Admin Config.lnk" "$INSTDIR\${CONFIG_LAUNCHER_EXE}"
-            Goto after_admin_shortcut_programs_update
-        no_admin_shortcut_programs_update:
-            CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME} - Admin Config.lnk" "$INSTDIR\${APP_EXE}" "--config"
-        after_admin_shortcut_programs_update:
-        CreateShortCut "$SMPROGRAMS\${APPNAME}\Install ${APPNAME} Service.lnk" "$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" "-ExecutionPolicy Bypass -File \"$INSTDIR\Service\install-service.ps1\""
+        ; Check-In Kiosk
+        CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME} - Check-In Kiosk.lnk" "$INSTDIR\${APP_EXE}" "--asset-checkin"
+        ; Admin Config
+        CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME} - Admin Config.lnk" "$INSTDIR\${CONFIG_LAUNCHER_EXE}"
 
-        CreateShortCut "$DESKTOP\${APPNAME} - Kiosk.lnk" "$INSTDIR\${APP_EXE}"
-        IfFileExists "$INSTDIR\${CONFIG_LAUNCHER_EXE}" 0 no_admin_shortcut_desktop_update
+        ; ==========================================
+        ; 2. DESKTOP SHORTCUTS (Only if checked)
+        ; ==========================================
+        ${If} $DESKTOP_CHECKED == 1
+            ; Check-In Kiosk
+            CreateShortCut "$DESKTOP\${APPNAME} - Check-In Kiosk.lnk" "$INSTDIR\${APP_EXE}" "--asset-checkin"
+            ; Admin Config
             CreateShortCut "$DESKTOP\${APPNAME} - Admin Config.lnk" "$INSTDIR\${CONFIG_LAUNCHER_EXE}"
-            Goto after_admin_shortcut_desktop_update
-        no_admin_shortcut_desktop_update:
-            CreateShortCut "$DESKTOP\${APPNAME} - Admin Config.lnk" "$INSTDIR\${APP_EXE}" "--config"
-        after_admin_shortcut_desktop_update:
+        ${EndIf}
 
+        ; ==========================================
+        ; 3. STARTUP (Optional)
+        ; ==========================================
         ${If} $STARTUP_CHECKED == 1
             CreateShortCut "$SMSTARTUP\${APPNAME}.lnk" "$INSTDIR\${APP_EXE}"
-        ${EndIf}
-        ${If} $DESKTOP_CHECKED == 1
-            CreateShortCut "$Desktop\${APPNAME}.lnk" "$INSTDIR\${APP_EXE}"
         ${EndIf}
 
         WriteUninstaller "$INSTDIR\Uninstall.exe"

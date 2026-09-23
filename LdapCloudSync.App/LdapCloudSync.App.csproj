@@ -10,11 +10,15 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>Connexus.ico</ApplicationIcon>
-	<Version>1.0.1</Version>
-	<AssemblyVersion>1.0.1.0</AssemblyVersion>
-	<FileVersion>1.0.1.0</FileVersion>
+    <ApplicationIcon>ConNexus.ico</ApplicationIcon>
+	<Version>1.0.2</Version>
+	<AssemblyVersion>1.0.2.0</AssemblyVersion>
+	<FileVersion>1.0.2.0</FileVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="ConNexus.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Connexus.ico">
@@ -25,5 +29,31 @@
   <ItemGroup>
     <ProjectReference Include="..\LdapCloudSync.Core\LdapCloudSync.Core.csproj" />
   </ItemGroup>
+
+  <Target Name="PublishConNexusDependencies" AfterTargets="Publish;PublishOnly">
+    <PropertyGroup>
+      <RepoRoot>$(MSBuildProjectDirectory)\..\</RepoRoot>
+      <AppPublishDir Condition="$([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$(PublishDir)</AppPublishDir>
+      <AppPublishDir Condition="!$([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$(MSBuildProjectDirectory)\$(PublishDir)</AppPublishDir>
+      <ServiceProject>$(RepoRoot)LdapCloudSync.Service\LdapCloudSync.Service.csproj</ServiceProject>
+      <ConfigLauncherProject>$(RepoRoot)LdapCloudSync.ConfigLauncher\LdapCloudSync.ConfigLauncher.csproj</ConfigLauncherProject>
+      <ConfigLauncherPublishDir>$(AppPublishDir)ConfigLauncher\</ConfigLauncherPublishDir>
+      <ServicePublishDir>$(AppPublishDir)Service\</ServicePublishDir>
+      <CommonPublishArgs>-c $(Configuration) -f $(TargetFramework) -r $(RuntimeIdentifier) --self-contained $(SelfContained) -p:PublishSingleFile=$(PublishSingleFile) -p:PublishReadyToRun=$(PublishReadyToRun) -p:PublishProfile=</CommonPublishArgs>
+    </PropertyGroup>
+
+    <Exec Command="dotnet publish &quot;$(ServiceProject)&quot; $(CommonPublishArgs) -o &quot;$(ServicePublishDir)&quot;" />
+    <Exec Command="dotnet publish &quot;$(ConfigLauncherProject)&quot; $(CommonPublishArgs) -o &quot;$(ConfigLauncherPublishDir)&quot;" />
+
+    <ItemGroup>
+      <ConfigLauncherPublishedFiles Include="$(ConfigLauncherPublishDir)ConNexus.ConfigLauncher.exe" />
+      <ConfigLauncherPublishedFiles Include="$(ConfigLauncherPublishDir)ConNexus.ConfigLauncher.dll" />
+      <ConfigLauncherPublishedFiles Include="$(ConfigLauncherPublishDir)ConNexus.ConfigLauncher.deps.json" />
+      <ConfigLauncherPublishedFiles Include="$(ConfigLauncherPublishDir)ConNexus.ConfigLauncher.runtimeconfig.json" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(ConfigLauncherPublishedFiles)" DestinationFolder="$(AppPublishDir)" SkipUnchangedFiles="true" />
+    <RemoveDir Directories="$(ConfigLauncherPublishDir)" />
+  </Target>
 
 </Project>

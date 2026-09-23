@@ -10,7 +10,12 @@
 	<AssemblyName>ConNexus.ConfigLauncher</AssemblyName>
 	<Title>ConNexus.ConfigLauncher</Title>
 	<Product>ConNexus</Product>
+	<ApplicationIcon>ConNexusName.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="ConNexusName.ico" />
+  </ItemGroup>
 
   <ItemGroup>
 	<ProjectReference Include="..\LdapCloudSync.App\LdapCloudSync.App.csproj" />
