@@ -1,255 +1,163 @@
-# LDAPult - Adding a New Cloud Provider
+# ConNexus
 
-This guide shows **every integration point** needed to add support for a new cloud asset management API (e.g., AssetPanda, Lansweeper, etc.).
-
----
-
-## Overview: What You'll Create
-
-To add a new provider, you'll:
-1. **Create one provider class** with API-specific logic
-2. **Add one preset** (optional, for convenience)
-3. **Register the provider** in the factory
-4. **Update UI** (if the provider has unique features)
-
-**Estimated time:** 30-60 minutes for a standard REST API
+ConNexus is a .NET 8 Windows solution for syncing Active Directory data to cloud systems, with a desktop configuration app, a Windows background service, and a kiosk-style asset check-in mode.
 
 ---
 
-## Step 1: Create the Provider Class
+## Solution Overview
 
-**File:** `LdapCloudSync.Core/Providers/YourProviderClient.cs`
+Projects in this repository:
 
-using System.Net.Http.Headers; using LdapCloudSync.Core.Interfaces; using LdapCloudSync.Core.Models; using Serilog;
-namespace LdapCloudSync.Core.Providers;
-/// <summary> /// Cloud client for [YourProvider] API. /// Handles [YourProvider]-specific authentication and endpoints. /// </summary> public sealed class YourProviderClient : BaseCloudClient { public YourProviderClient(CloudTargetConfig target, HttpClient? httpClient = null, ILogger? logger = null) : base(target, httpClient, logger) { }
-/// <summary>
-/// Override if your API uses custom authentication.
-/// For standard Bearer/Basic/ApiKey, you can omit this.
-/// </summary>
-protected override void ApplyCustomAuth(HttpRequestMessage request, HttpMethod method, string endpoint)
-{
-    // Example: Custom header-based auth
-    request.Headers.TryAddWithoutValidation("X-API-Key", _target.Connection.ApiKey);
-    request.Headers.TryAddWithoutValidation("X-Timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
-}
-
-/// <summary>
-/// Optional: Add provider-specific methods like category discovery.
-/// </summary>
-public async Task<List<(int Id, string Name)>> GetAssetTypesAsync()
-{
-    var request = BuildRequest(HttpMethod.Get, "/api/asset-types");
-    var response = await _httpClient.SendAsync(request);
-    response.EnsureSuccessStatusCode();
-
-    var json = await response.Content.ReadAsStringAsync();
-    // Parse and return your provider's category structure
-    return [];
-}
-}
-
-**If your provider uses standard auth** (Bearer token, Basic, or simple API key header), you don't need to override anything - just inherit `BaseCloudClient` and you're done.
+- `LdapCloudSync.App` - WPF desktop app (`ConNexus.exe`) for configuration, testing, mapping, and update checks
+- `LdapCloudSync.Core` - shared models, providers, scheduling, config, logging, and sync logic
+- `LdapCloudSync.Service` - Windows Service host (`ConNexus.Service.exe`) that runs scheduled syncs
+- `LdapCloudSync.ConfigLauncher` - small elevated launcher that starts `ConNexus.exe --config`
+- `Asset&UserAPItool` - separate WinForms utility project in the same solution
 
 ---
 
-## Step 2: Add a Preset (Optional but Recommended)
+## Requirements
 
-**File:** `LdapCloudSync.Core/Presets/PresetRegistry.cs`
-
-Add your preset alongside Reftab and SnipeIT:
-
-public static CloudPreset YourProvider { get; } = new() { Name = "YourProvider", ProviderType = "YourProvider", // Must match Step 3 BaseUrl = "https://api.yourprovider.com/v1", AuthType = AuthType.BearerToken, // or ApiKey, BasicAuth, Hmac, etc.
-Assets = new PresetEndpoints
-{
-    GetEndpoint = "/assets",
-    PostEndpoint = "/assets",
-    PutEndpoint = "/assets/{id}",
-    ResponseItemsPath = "$.data", // JSONPath to array of items
-    CloudIdField = "id",
-    AdMatchField = "cn",
-    CloudMatchField = "name",
-    DefaultMappings =
-    [
-        new FieldMapping
-        {
-            CloudField = "name",
-            AdAttributes = ["cn"],
-            TransformExpression = null,
-            DefaultValue = null
-        },
-        new FieldMapping
-        {
-            CloudField = "serial_number",
-            AdAttributes = ["serialNumber"],
-            TransformExpression = null,
-            DefaultValue = null
-        }
-    ]
-},
-
-Users = new PresetEndpoints
-{
-    // Similar structure for users/loanees
-}
-};
-
-
-**Note:** The preset is just a convenience for users. Your provider will work without it as long as you implement the client and register it.
-
-**Then register it** in the static constructor:
-
-static PresetRegistry() { Register(Reftab); Register(SnipeIt); Register(YourProvider); // Add this line }
-
+- Windows
+- .NET SDK 8.0+
+- Visual Studio 2022/2026 (recommended)
+- Active Directory access and credentials (for AD-backed sync scenarios)
 
 ---
 
-## Step 3: Register in the Factory
+## Build and Run
 
-**File:** `LdapCloudSync.Core/Providers/CloudClientFactory.cs`
+Build the full solution:
 
-Add a case for your provider:
+- Visual Studio: **Build > Build Solution**
+- CLI: `dotnet build "Asset&UserAPItool.sln"`
 
-public static class CloudClientFactory { public static ICloudClient CreateClient(CloudTargetConfig config, ILogger? logger = null) { return config.PresetOrigin switch { "Reftab" => new ReftabClient(config, logger: logger), "SnipeIT" => new GenericCloudClient(config, logger: logger), // Uses standard auth "YourProvider" => new YourProviderClient(config, logger: logger), // Add this _ => new GenericCloudClient(config, logger: logger) // Fallback for custom/blank }; } }
+Run desktop app:
 
-
----
-
-## Step 4: Update UI for Provider-Specific Features (Optional)
-
-If your provider has unique features (like Reftab's category selector), add UI:
-
-### A. Add ViewModel Properties
-
-**File:** `LdapCloudSync.App/ViewModels/CloudTargetViewModel.cs`
-
-arp // Show category selector only for providers that support it public bool ShowCategorySelector => PresetOrigin is "Reftab" or "YourProvider";
-// Add provider-specific data public ObservableCollection<CategoryItem> YourProviderCategories { get; } = [];
-// Add command to fetch provider-specific data public ICommand RefreshYourProviderDataCommand { get; }
-// In constructor: RefreshYourProviderDataCommand = new AsyncRelayCommand(RefreshYourProviderDataAsync);
-private async Task RefreshYourProviderDataAsync() { var targetConfig = BuildTargetConfig(); using var client = new YourProviderClient(targetConfig); var types = await client.GetAssetTypesAsync();
-YourProviderCategories.Clear();
-foreach (var (id, name) in types)
-{
-    YourProviderCategories.Add(new CategoryItem { Id = id, Name = name });
-}
-}
-
-
-### B. Add UI Elements
-
-**File:** `LdapCloudSync.App/Views/CloudTargetDetailView.xaml`
-
-Add provider-specific UI in the appropriate section:
-
-<!-- YourProvider Category Selection --> <StackPanel Visibility="{Binding ShowYourProviderSettings, Converter={StaticResource BoolToVis}}"> <TextBlock Text="Asset Type (YourProvider)" Style="{StaticResource FieldLabel}" /> <ComboBox ItemsSource="{Binding YourProviderCategories}" SelectedValue="{Binding AssetsTargetCategoryId}" DisplayMemberPath="Name" SelectedValuePath="Id" /> <Button Content="Refresh Types" Command="{Binding RefreshYourProviderDataCommand}" Style="{StaticResource SecondaryButton}" Margin="0,4,0,0" /> </StackPanel>
-
-**Note:** Use `ShowYourProviderSettings` to conditionally show/hide UI elements based on the selected provider.
-
+- Visual Studio: set `LdapCloudSync.App` as startup project
+- CLI: `dotnet run --project "LdapCloudSync.App\LdapCloudSync.App.csproj"`
 
 ---
 
-## Step 5: Test Your Integration
+## Configuration Storage
 
-1. **Build the solution** (Ctrl+Shift+B)
-2. **Run the app**
-3. **Add a new cloud target**
-4. **Select your preset** from the dropdown
-5. **Fill in credentials** (Base URL, API Key, etc.)
-6. **Click "Test Connection"** - should see 200 OK
-7. **Click "Discover Fields"** to verify field mapping works
-8. **Run a test sync** (10 records) to verify create/update logic
+ConNexus stores config in:
+
+- `C:\ProgramData\Connexus\config.json`
+
+This is managed by `ConfigService` in `LdapCloudSync.Core`.
 
 ---
 
-## Architecture Summary
-User selects preset "YourProvider" -> PresetOrigin = "YourProvider" saved to config -> CloudClientFactory.CreateClient(config) -> Returns YourProviderClient instance -> SyncOrchestrator uses YourProviderClient for all API calls (test, discover, push)
+## Launch Arguments
 
+`ConNexus.exe` supports these arguments:
 
----
+| Argument | Behavior |
+|---|---|
+| *(none)* | Opens the main window. |
+| `--config` | Opens configuration mode. If not elevated, ConNexus relaunches itself as admin. |
+| `--asset-checkin` | Opens the Asset Check-In window directly (kiosk mode). |
 
-## Configuration Points Reference
+Notes:
 
-| **Component** | **File** | **Action** |
-|---|---|---|
-| **Provider Logic** | `Providers/YourProviderClient.cs` | Create class, override auth if needed |
-| **Preset Template** | `Presets/PresetRegistry.cs` | Add preset config (endpoints, mappings) |
-| **Factory Registration** | `Providers/CloudClientFactory.cs` | Add case for `PresetOrigin` |
-| **UI (optional)** | `ViewModels/CloudTargetViewModel.cs` | Add properties, commands |
-| **UI (optional)** | `Views/CloudTargetDetailView.xaml` | Add UI elements |
+- `--config` takes precedence over kiosk mode.
+- Kiosk mode also supports a custom argument from config (`Kiosk.AssetCheckInLaunchArgument`), while `--asset-checkin` remains the built-in default.
 
----
+### Launch Argument Examples
 
-## Common Scenarios
+From Command Prompt / PowerShell:
 
-### **Scenario 1: Standard REST API with Bearer Token**
+- `ConNexus.exe`
+- `ConNexus.exe --config`
+- `ConNexus.exe --asset-checkin`
 
-No custom provider class needed! Just add a preset:
+From published output folder:
 
-public static CloudPreset SimpleAPI { get; } = new() { Name = "SimpleAPI", ProviderType = "Generic", // Uses GenericCloudClient BaseUrl = "https://api.simple.com", AuthType = AuthType.BearerToken, // ... endpoints };
+- `.\ConNexus.exe --config`
+- `.\ConNexus.exe --asset-checkin`
 
+From a Windows shortcut:
 
-### **Scenario 2: Custom HMAC Signature (like Reftab)**
-
-Create a provider class that overrides `ApplyCustomAuth()`:
-
-protected override void ApplyCustomAuth(HttpRequestMessage request, HttpMethod method, string endpoint) { // Compute custom signature var signature = ComputeYourCustomHMAC(method, endpoint); request.Headers.TryAddWithoutValidation("Authorization", $"HMAC {signature}"); }
-
-
-### **Scenario 3: Pagination Required**
-
-Override `FetchExistingRecordsAsync()`:
-protected override async Task<List<JsonObject>> FetchExistingRecordsAsync(SyncCategoryConfig categoryConfig) { var allRecords = new List<JsonObject>(); var page = 1;
-while (true)
-{
-    var request = BuildRequest(HttpMethod.Get, $"{categoryConfig.GetEndpoint}?page={page}");
-    var response = await _httpClient.SendAsync(request);
-    // Parse, add to allRecords, check for next page
-    if (noMorePages) break;
-    page++;
-}
-
-return allRecords;
-}
-
+- Target: `"C:\Program Files\ConNexus\ConNexus.exe" --config`
+- Target: `"C:\Program Files\ConNexus\ConNexus.exe" --asset-checkin`
 
 ---
 
-## Need Help?
+## Update Check Behavior (GitHub Releases)
 
-1. **Check existing providers** (`ReftabClient.cs`, `GenericCloudClient.cs`) for examples
-2. **API documentation** - look for authentication type, endpoint structure, response format
-3. **Test with PowerShell/Postman first** to verify API behavior before coding
+The update UI in the app checks the latest release API endpoint and compares:
 
----
+- current app assembly version
+- latest GitHub release tag
 
-## Summary
+Default endpoint:
 
-**Minimum steps to add a provider:**
-1. Create `YourProviderClient.cs` (override auth if custom)
-2. Add preset to `PresetRegistry.cs`
-3. Register in `CloudClientFactory.cs`
+- `https://api.github.com/repos/Auseroth/Asset-UserAPItool/releases/latest`
 
-**Optional:**
-4. Add UI for provider-specific features
-5. Override methods for pagination, custom error handling, etc.
+Update download is enabled only when:
 
-That's it! The architecture is designed so **80% of REST APIs need only 3 files touched**, and complex ones need just one additional provider class.
+1. release tag parses to a version
+2. latest version is newer than current version
+3. latest release includes an `.exe` asset
 
 ---
 
-## Current Providers
+## Windows Service
 
-### Reftab
-- **Authentication:** Custom HMAC (RFC 2822 date + hex-to-base64 encoding)
-- **Unique Features:** Asset category selection
-- **File:** `ReftabClient.cs`
+Service project: `LdapCloudSync.Service`
 
-### Snipe-IT
-- **Authentication:** Bearer token (standard)
-- **File:** Uses `GenericCloudClient` (no custom class needed)
+- Service name: `ConNexus`
+- Worker implementation: `SyncWorker : BackgroundService`
+- Runs schedule evaluation and sync execution in the background
 
-### Generic (Fallback)
-- **Authentication:** Bearer, Basic, ApiKey, standard HMAC
-- **File:** `GenericCloudClient.cs`
-- **Use for:** Custom/blank presets, or any standard REST API
+Install helper script (run elevated):
+
+- `LdapCloudSync.Service\install-service.ps1`
+
+Uninstall helper script:
+
+- `LdapCloudSync.Service\uninstall-service.ps1`
+
+---
+
+## Adding a New Cloud Provider (Quick Guide)
+
+If you want to integrate another provider/API:
+
+1. Create provider client in `LdapCloudSync.Core\Providers`
+2. Add a preset in `LdapCloudSync.Core\Presets\PresetRegistry.cs` (optional but recommended)
+3. Register provider selection in `CloudClientFactory`
+4. Add provider-specific UI only if needed
+
+Suggested validation path:
+
+1. Test connection
+2. Discover fields
+3. Run small sync sample
+4. Run scheduled sync through service
+
+---
+
+## Troubleshooting
+
+- **No update EXE found**
+  - Verify latest GitHub release has an `.exe` asset.
+  - Verify release repository is public (or add auth logic if private).
+
+- **Updater says up to date but should not**
+  - Confirm app `AssemblyVersion`/`Version` and release tag format align (e.g., `1.0.1` / `v1.0.1`).
+
+- **Config mode does not open elevated**
+  - Run from a normal user session and pass `--config`; UAC prompt should appear.
+
+- **Service not starting**
+  - Re-run install script as administrator and verify `ConNexus.Service.exe` exists in publish/install location.
+
+---
+
+## Naming
+
+User-visible naming in this repo should use **ConNexus**.
+
+
