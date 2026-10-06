@@ -19,6 +19,7 @@
 !define SERVICE_NAME "ConNexus"
 !define VERSION "1.0.0.2"
 !define APP_ICON "${PUBLISH_DIR}\Connexus.ico"
+!define MUI_ICON "C:\\temp file transfer\\9.VisualStudio\\field testing\\Asset&UserAPItool\\LdapCloudSync.App\\bin\\Release\\net8.0-windows\\publish\\win-x86\\ConNexus.ico"
 
 Name "${APPNAME}"
 OutFile "NSIS output\${APPNAME}_Install.exe"
