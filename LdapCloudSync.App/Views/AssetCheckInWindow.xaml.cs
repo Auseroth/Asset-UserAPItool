@@ -1,15 +1,15 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace LdapCloudSync.App.Views;
 
 public partial class AssetCheckInWindow : Window
 {
-    private static readonly TimeSpan TouchLaunchWindow = TimeSpan.FromMilliseconds(1500);
-    private DateTime _lastOskLaunchAttemptUtc = DateTime.MinValue;
-    private DateTime _lastTouchInputUtc = DateTime.MinValue;
+    private TextBox? _activeTextBox;
+    private bool _isKeyboardVisible;
+    private bool _isSymbolKeyboardVisible;
 
     public AssetCheckInWindow()
     {
@@ -21,8 +21,6 @@ public partial class AssetCheckInWindow : Window
             vm.CheckInCompleted += OnCheckInCompleted;
         }
 
-        AddHandler(UIElement.PreviewTouchDownEvent, new EventHandler<TouchEventArgs>(OnInputPreviewTouchDown), true);
-        AddHandler(UIElement.PreviewStylusDownEvent, new StylusDownEventHandler(OnInputPreviewStylusDown), true);
         AddHandler(UIElement.GotKeyboardFocusEvent, new RoutedEventHandler(OnInputGotKeyboardFocus), true);
     }
 
@@ -32,52 +30,104 @@ public partial class AssetCheckInWindow : Window
         Topmost = false;
     }
 
-    private void OnInputPreviewTouchDown(object sender, TouchEventArgs e)
-    {
-        if (e.OriginalSource is TextBox)
-            _lastTouchInputUtc = DateTime.UtcNow;
-    }
-
-    private void OnInputPreviewStylusDown(object sender, StylusDownEventArgs e)
-    {
-        if (e.OriginalSource is TextBox)
-            _lastTouchInputUtc = DateTime.UtcNow;
-    }
-
     private void OnInputGotKeyboardFocus(object sender, RoutedEventArgs e)
     {
-        if (e.OriginalSource is not TextBox)
-            return;
-
-        var sinceTouch = DateTime.UtcNow - _lastTouchInputUtc;
-        if (sinceTouch > TouchLaunchWindow)
-            return;
-
-        var elapsed = DateTime.UtcNow - _lastOskLaunchAttemptUtc;
-        if (elapsed < TimeSpan.FromSeconds(1))
-            return;
-
-        _lastOskLaunchAttemptUtc = DateTime.UtcNow;
-        TryLaunchOnScreenKeyboard();
+        var textBox = TryGetOwningTextBox(e.OriginalSource);
+        if (textBox is not null)
+            _activeTextBox = textBox;
     }
 
-    private static void TryLaunchOnScreenKeyboard()
+    private static TextBox? TryGetOwningTextBox(object? source)
     {
-        try
+        var current = source as DependencyObject;
+        while (current is not null)
         {
-            if (Process.GetProcessesByName("osk").Length > 0)
-                return;
+            if (current is TextBox textBox)
+                return textBox;
 
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "osk.exe",
-                UseShellExecute = true
-            });
+            current = current is FrameworkContentElement fce
+                ? fce.Parent
+                : VisualTreeHelper.GetParent(current);
         }
-        catch
+
+        return null;
+    }
+
+    private void ToggleOnScreenKeyboard_Click(object sender, RoutedEventArgs e)
+    {
+        _isKeyboardVisible = !_isKeyboardVisible;
+
+        if (FindName("OnScreenKeyboardPanel") is FrameworkElement panel)
+            panel.Visibility = _isKeyboardVisible ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_isKeyboardVisible)
+            SetSymbolKeyboardVisible(false);
+
+        if (FindName("KeyboardToggleButton") is Button toggle)
+            toggle.Content = _isKeyboardVisible ? "Hide On-Screen Keyboard" : "On-Screen Keyboard";
+    }
+
+    private void ToggleSymbolKeyboard_Click(object sender, RoutedEventArgs e)
+    {
+        SetSymbolKeyboardVisible(!_isSymbolKeyboardVisible);
+
+        if (_activeTextBox is not null && _activeTextBox.IsEnabled)
+            _activeTextBox.Focus();
+    }
+
+    private void SetSymbolKeyboardVisible(bool visible)
+    {
+        _isSymbolKeyboardVisible = visible;
+
+        if (FindName("AlphaKeyboardLayout") is FrameworkElement alpha)
+            alpha.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;
+
+        if (FindName("SymbolKeyboardLayout") is FrameworkElement symbols)
+            symbols.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void KeyboardKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+            return;
+
+        var key = button.Tag?.ToString() ?? string.Empty;
+        if (string.IsNullOrEmpty(key))
+            return;
+
+        if (_activeTextBox is null || !_activeTextBox.IsEnabled)
+            return;
+
+        var targetTextBox = _activeTextBox;
+        targetTextBox.Focus();
+
+        if (string.Equals(key, "BACKSPACE", StringComparison.Ordinal))
         {
-            // Best-effort launch in kiosk mode.
+            if (targetTextBox.SelectionLength > 0)
+            {
+                var start = targetTextBox.SelectionStart;
+                targetTextBox.Text = targetTextBox.Text.Remove(start, targetTextBox.SelectionLength);
+                targetTextBox.SelectionStart = start;
+            }
+            else if (targetTextBox.SelectionStart > 0)
+            {
+                var removeIndex = targetTextBox.SelectionStart - 1;
+                targetTextBox.Text = targetTextBox.Text.Remove(removeIndex, 1);
+                targetTextBox.SelectionStart = removeIndex;
+            }
+
+            return;
         }
+
+        var insertText = string.Equals(key, "SPACE", StringComparison.Ordinal) ? " " : key;
+        var selectionStart = targetTextBox.SelectionStart;
+        var selectionLength = targetTextBox.SelectionLength;
+
+        if (selectionLength > 0)
+            targetTextBox.Text = targetTextBox.Text.Remove(selectionStart, selectionLength);
+
+        targetTextBox.Text = targetTextBox.Text.Insert(selectionStart, insertText);
+        targetTextBox.SelectionStart = selectionStart + insertText.Length;
     }
 
     private void OnCloseRequested()
