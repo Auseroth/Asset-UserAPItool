@@ -6,6 +6,8 @@ namespace LdapCloudSync.App.ViewModels;
 
 public sealed class AssetCheckInViewModel : ViewModelBase
 {
+    private const string TurnInPromptOption = "Please select an option";
+
     private readonly ConfigService _configService;
     private readonly AssetCheckInService _assetCheckInService;
     private DateTimeOffset _lastSubmissionUtc = DateTimeOffset.MinValue;
@@ -20,7 +22,7 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         RefreshSummary();
     }
 
-    public IReadOnlyList<string> AssetTurnInOptions { get; } = ["Yes", "No"];
+    public IReadOnlyList<string> AssetTurnInOptions { get; } = [TurnInPromptOption, "Yes", "No"];
 
     private string _windowTitle = "Create A Ticket Or Drop Off An Asset";
     public string WindowTitle
@@ -57,7 +59,7 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         set => SetProperty(ref _autoCloseSeconds, value);
     }
 
-    private string _turningInAssetAnswer = string.Empty;
+    private string _turningInAssetAnswer = TurnInPromptOption;
     public string TurningInAssetAnswer
     {
         get => _turningInAssetAnswer;
@@ -208,6 +210,7 @@ public sealed class AssetCheckInViewModel : ViewModelBase
             _lastSubmissionKey = submissionKey;
             _lastSubmissionUtc = DateTimeOffset.UtcNow;
 
+            TurningInAssetAnswer = TurnInPromptOption;
             FirstName = string.Empty;
             LastName = string.Empty;
             PhoneNumber = string.Empty;
