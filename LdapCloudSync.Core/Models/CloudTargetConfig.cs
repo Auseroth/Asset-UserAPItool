@@ -87,6 +87,30 @@ public sealed class CloudConnectionConfig
 
     /// <summary>Content type for POST/PUT requests. Defaults to JSON.</summary>
     public string ContentType { get; set; } = "application/json";
+
+    /// <summary>SMTP server host for Email provider targets.</summary>
+    public string SmtpHost { get; set; } = string.Empty;
+
+    /// <summary>SMTP server port for Email provider targets.</summary>
+    public int SmtpPort { get; set; } = 587;
+
+    /// <summary>Use TLS/SSL for SMTP connections.</summary>
+    public bool SmtpUseSsl { get; set; } = true;
+
+    /// <summary>SMTP username. Leave empty to use default credentials.</summary>
+    public string SmtpUsername { get; set; } = string.Empty;
+
+    /// <summary>SMTP password for the configured SMTP username.</summary>
+    public string SmtpPassword { get; set; } = string.Empty;
+
+    /// <summary>Email address used as the sender.</summary>
+    public string EmailFromAddress { get; set; } = string.Empty;
+
+    /// <summary>Email address that receives kiosk request tickets.</summary>
+    public string EmailToAddress { get; set; } = string.Empty;
+
+    /// <summary>Optional email subject prefix for generated ticket emails.</summary>
+    public string EmailSubjectPrefix { get; set; } = "Check-in Request";
 }
 
 public enum AuthType

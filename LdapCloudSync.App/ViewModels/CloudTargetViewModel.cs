@@ -171,6 +171,62 @@ public sealed class CloudTargetViewModel : ViewModelBase
         set => SetProperty(ref _contentType, value);
     }
 
+    private string _smtpHost = string.Empty;
+    public string SmtpHost
+    {
+        get => _smtpHost;
+        set => SetProperty(ref _smtpHost, value);
+    }
+
+    private int _smtpPort = 587;
+    public int SmtpPort
+    {
+        get => _smtpPort;
+        set => SetProperty(ref _smtpPort, value);
+    }
+
+    private bool _smtpUseSsl = true;
+    public bool SmtpUseSsl
+    {
+        get => _smtpUseSsl;
+        set => SetProperty(ref _smtpUseSsl, value);
+    }
+
+    private string _smtpUsername = string.Empty;
+    public string SmtpUsername
+    {
+        get => _smtpUsername;
+        set => SetProperty(ref _smtpUsername, value);
+    }
+
+    private string _smtpPassword = string.Empty;
+    public string SmtpPassword
+    {
+        get => _smtpPassword;
+        set => SetProperty(ref _smtpPassword, value);
+    }
+
+    private string _emailFromAddress = string.Empty;
+    public string EmailFromAddress
+    {
+        get => _emailFromAddress;
+        set => SetProperty(ref _emailFromAddress, value);
+    }
+
+    private string _emailToAddress = string.Empty;
+    public string EmailToAddress
+    {
+        get => _emailToAddress;
+        set => SetProperty(ref _emailToAddress, value);
+    }
+
+    private string _emailSubjectPrefix = "Check-in Request";
+    public string EmailSubjectPrefix
+    {
+        get => _emailSubjectPrefix;
+        set => SetProperty(ref _emailSubjectPrefix, value);
+    }
+
     private string _cloudConnectionStatus = string.Empty;
     public string CloudConnectionStatus
     {
@@ -658,19 +714,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
     {
         var current = _selectedSourceDisplay;
         var displayFromSourceId = _sourcesVm.GetDisplayOptionForSourceId(SourceId, _sourceFileService);
-        var kioskSourceId = $"{SourceFileService.FileSourcePrefix}{KioskConfig.AssetCheckInSourceFileName}";
-        var isKioskSource = string.Equals(SourceId, kioskSourceId, StringComparison.OrdinalIgnoreCase);
 
         AvailableSourceOptions.Clear();
         foreach (var opt in _sourcesVm.GetAllSourceOptions(_sourceFileService))
             AvailableSourceOptions.Add(opt);
 
-        if (isKioskSource)
+        if (IsEmailProvider)
         {
-            // Keep the kiosk source selected internally even though it is intentionally
-            // omitted from the normal source list shown in the UI.
-            _selectedSourceDisplay = displayFromSourceId;
-            OnPropertyChanged(nameof(SelectedSourceDisplay));
+            EnsureProviderSourceSelection();
             return;
         }
 
@@ -682,6 +733,34 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
         SourceId = _sourcesVm.ResolveSourceId(_selectedSourceDisplay, _sourceFileService);
         OnPropertyChanged(nameof(SelectedSourceDisplay));
+    }
+
+    private void EnsureProviderSourceSelection()
+    {
+        if (!IsEmailProvider)
+            return;
+
+        var kioskSourceId = $"{SourceFileService.FileSourcePrefix}{KioskConfig.AssetCheckInSourceFileName}";
+        if (!string.Equals(SourceId, kioskSourceId, StringComparison.OrdinalIgnoreCase))
+            SourceId = kioskSourceId;
+
+        var kioskDisplay = _sourcesVm.GetDisplayOptionForSourceId(kioskSourceId, _sourceFileService);
+        if (!string.Equals(_selectedSourceDisplay, kioskDisplay, StringComparison.Ordinal))
+        {
+            _selectedSourceDisplay = kioskDisplay;
+            OnPropertyChanged(nameof(SelectedSourceDisplay));
+        }
+    }
+
+    private void EnsureEmailWorkflowFlags()
+    {
+        if (!IsEmailProvider)
+            return;
+
+        AssetsEnabled = false;
+        UsersEnabled = false;
+        PrimaryScheduleEnabled = false;
+        UsersScheduleEnabled = false;
     }
 
     /// <summary>Resolves the AD config for this target's source, or null if not AD.</summary>
@@ -750,12 +829,18 @@ public sealed class CloudTargetViewModel : ViewModelBase
         {
             if (SetProperty(ref _providerType, value))
             {
+                EnsureProviderSourceSelection();
+                EnsureEmailWorkflowFlags();
                 OnPropertyChanged(nameof(ShowCategorySelector));
                 OnPropertyChanged(nameof(ShowLocationSelector));
                 OnPropertyChanged(nameof(ShowApSettings));
                 OnPropertyChanged(nameof(ShowApAssetSettings));
                 OnPropertyChanged(nameof(ShowApUserSettings));
                 OnPropertyChanged(nameof(HideGenericEndpoints));
+                OnPropertyChanged(nameof(IsEmailProvider));
+                OnPropertyChanged(nameof(ShowApiConnectionFields));
+                OnPropertyChanged(nameof(ShowSourceSelection));
+                OnPropertyChanged(nameof(ShowSyncSections));
             }
         }
     }
@@ -765,7 +850,11 @@ public sealed class CloudTargetViewModel : ViewModelBase
     public bool ShowApSettings => ProviderType == "AssetPanda";
     public bool ShowApAssetSettings => ProviderType == "AssetPanda";
     public bool ShowApUserSettings => ProviderType == "AssetPanda";
-    public bool HideGenericEndpoints => ProviderType == "AssetPanda";
+    public bool IsEmailProvider => ProviderType == "Email";
+    public bool ShowApiConnectionFields => !IsEmailProvider;
+    public bool ShowSourceSelection => !IsEmailProvider;
+    public bool ShowSyncSections => !IsEmailProvider;
+    public bool HideGenericEndpoints => ProviderType == "AssetPanda" || IsEmailProvider;
 
     #endregion
 
@@ -1077,6 +1166,15 @@ public sealed class CloudTargetViewModel : ViewModelBase
             HmacAlgorithm = "HMACSHA256";
             ContentType = "application/json";
 
+            SmtpHost = string.Empty;
+            SmtpPort = 587;
+            SmtpUseSsl = true;
+            SmtpUsername = string.Empty;
+            SmtpPassword = string.Empty;
+            EmailFromAddress = string.Empty;
+            EmailToAddress = string.Empty;
+            EmailSubjectPrefix = "Check-in Request";
+
             AssetsEnabled = false;
             AssetsGetEndpoint = string.Empty;
             AssetsPostEndpoint = string.Empty;
@@ -1115,6 +1213,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
         ApiKeyFormat = config.Connection.ApiKeyFormat;
         HmacAlgorithm = config.Connection.HmacAlgorithm;
         ContentType = config.Connection.ContentType;
+        SmtpHost = config.Connection.SmtpHost;
+        SmtpPort = config.Connection.SmtpPort;
+        SmtpUseSsl = config.Connection.SmtpUseSsl;
+        SmtpUsername = config.Connection.SmtpUsername;
+        SmtpPassword = config.Connection.SmtpPassword;
+        EmailFromAddress = config.Connection.EmailFromAddress;
+        EmailToAddress = config.Connection.EmailToAddress;
+        EmailSubjectPrefix = config.Connection.EmailSubjectPrefix;
 
         // Assets endpoints
         AssetsGetEndpoint = config.Assets.GetEndpoint;
@@ -1171,9 +1277,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
         _presetOrigin = preset.Name;
         OnPropertyChanged(nameof(PresetOrigin));
         Name = preset.Name;
-        
-        // Add this line to set the provider type when applying a preset
+
         ProviderType = preset.ProviderType;
+        EnsureEmailWorkflowFlags();
     }
 
     #endregion
@@ -1215,7 +1321,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
 
                 if (string.Equals(fileName, KioskConfig.AssetCheckInSourceFileName, StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (var requiredField in new[] { "asset_tag", "serial_number", "check_in_note", "maintenance_trigger" })
+                    foreach (var requiredField in new[] { "first_name", "last_name", "phone_number", "asset_tag", "serial_number", "check_in_note", "maintenance_trigger" })
                     {
                         if (!fields.Contains(requiredField, StringComparer.OrdinalIgnoreCase))
                             fields.Add(requiredField);
@@ -1234,6 +1340,9 @@ public sealed class CloudTargetViewModel : ViewModelBase
                     var sample = new Dictionary<string, string>(records[0], StringComparer.OrdinalIgnoreCase);
                     if (string.Equals(fileName, KioskConfig.AssetCheckInSourceFileName, StringComparison.OrdinalIgnoreCase))
                     {
+                        sample.TryAdd("first_name", string.Empty);
+                        sample.TryAdd("last_name", string.Empty);
+                        sample.TryAdd("phone_number", string.Empty);
                         sample.TryAdd("asset_tag", string.Empty);
                         sample.TryAdd("serial_number", string.Empty);
                         sample.TryAdd("check_in_note", string.Empty);
@@ -1248,7 +1357,7 @@ public sealed class CloudTargetViewModel : ViewModelBase
             {
                 if (string.Equals(fileName, KioskConfig.AssetCheckInSourceFileName, StringComparison.OrdinalIgnoreCase))
                 {
-                    var kioskTemplateFields = new[] { "asset_tag", "serial_number", "check_in_note", "maintenance_trigger" };
+                    var kioskTemplateFields = new[] { "first_name", "last_name", "phone_number", "asset_tag", "serial_number", "check_in_note", "maintenance_trigger" };
                     DiscoveredAdComputerAttributes.Clear();
                     foreach (var f in kioskTemplateFields) DiscoveredAdComputerAttributes.Add(f);
                     CloudConnectionStatus = "Loaded Check-in Kiosk template fields (no payload file found yet).";
@@ -1432,6 +1541,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
         BasicPassword = Config.Connection.BasicPassword;
         HmacAlgorithm = Config.Connection.HmacAlgorithm;
         ContentType = Config.Connection.ContentType;
+        SmtpHost = Config.Connection.SmtpHost;
+        SmtpPort = Config.Connection.SmtpPort;
+        SmtpUseSsl = Config.Connection.SmtpUseSsl;
+        SmtpUsername = Config.Connection.SmtpUsername;
+        SmtpPassword = Config.Connection.SmtpPassword;
+        EmailFromAddress = Config.Connection.EmailFromAddress;
+        EmailToAddress = Config.Connection.EmailToAddress;
+        EmailSubjectPrefix = Config.Connection.EmailSubjectPrefix;
 
         // Assets
         AssetsEnabled = Config.Assets.Enabled;
@@ -1642,6 +1759,14 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.Connection.BasicPassword = BasicPassword;
         Config.Connection.HmacAlgorithm = HmacAlgorithm;
         Config.Connection.ContentType = ContentType;
+        Config.Connection.SmtpHost = SmtpHost;
+        Config.Connection.SmtpPort = SmtpPort;
+        Config.Connection.SmtpUseSsl = SmtpUseSsl;
+        Config.Connection.SmtpUsername = SmtpUsername;
+        Config.Connection.SmtpPassword = SmtpPassword;
+        Config.Connection.EmailFromAddress = EmailFromAddress;
+        Config.Connection.EmailToAddress = EmailToAddress;
+        Config.Connection.EmailSubjectPrefix = EmailSubjectPrefix;
 
         Config.Assets.Enabled = AssetsEnabled;
         Config.Assets.GetEndpoint = AssetsGetEndpoint;
@@ -1716,7 +1841,21 @@ public sealed class CloudTargetViewModel : ViewModelBase
         Config.ApUsersCollectionId = ApUsersCollectionId;
 
         // Source ID
-        Config.SourceId = SourceId;
+        Config.SourceId = IsEmailProvider
+            ? $"{SourceFileService.FileSourcePrefix}{KioskConfig.AssetCheckInSourceFileName}"
+            : SourceId;
+
+        if (IsEmailProvider)
+        {
+            Config.Assets.Enabled = false;
+            Config.Users.Enabled = false;
+            Config.Schedule.PrimarySchedule.Enabled = false;
+            Config.Schedule.UsersSchedule.Enabled = false;
+            AssetsEnabled = false;
+            UsersEnabled = false;
+            PrimaryScheduleEnabled = false;
+            UsersScheduleEnabled = false;
+        }
 
         // File-source success actions (persist only for linked file sources)
         Config.FileSourceSuccessAction = IsLinkedFileSourceSelected

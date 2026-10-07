@@ -22,6 +22,15 @@ public sealed class CloudPreset
     public string HmacAlgorithm { get; init; } = "HMACSHA256";
     public string ContentType { get; init; } = "application/json";
 
+    public string SmtpHost { get; init; } = string.Empty;
+    public int SmtpPort { get; init; } = 587;
+    public bool SmtpUseSsl { get; init; } = true;
+    public string SmtpUsername { get; init; } = string.Empty;
+    public string SmtpPassword { get; init; } = string.Empty;
+    public string EmailFromAddress { get; init; } = string.Empty;
+    public string EmailToAddress { get; init; } = string.Empty;
+    public string EmailSubjectPrefix { get; init; } = "Check-in Request";
+
     public required PresetEndpoints Assets { get; init; }
     public required PresetEndpoints Users { get; init; }
 
@@ -35,7 +44,14 @@ public sealed class CloudPreset
         nameof(CloudConnectionConfig.BaseUrl),
         nameof(CloudConnectionConfig.AuthType),
         nameof(CloudConnectionConfig.HmacAlgorithm),
-        nameof(CloudConnectionConfig.ContentType)
+        nameof(CloudConnectionConfig.ContentType),
+        nameof(CloudConnectionConfig.SmtpHost),
+        nameof(CloudConnectionConfig.SmtpPort),
+        nameof(CloudConnectionConfig.SmtpUseSsl),
+        nameof(CloudConnectionConfig.SmtpUsername),
+        nameof(CloudConnectionConfig.EmailFromAddress),
+        nameof(CloudConnectionConfig.EmailToAddress),
+        nameof(CloudConnectionConfig.EmailSubjectPrefix)
     };
 }
 

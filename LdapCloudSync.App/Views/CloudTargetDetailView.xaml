@@ -44,8 +44,10 @@
         </Border>
 
         <!-- Source Selection -->
-        <TextBlock Text="Data Source" Style="{StaticResource SectionHeader}" />
-        <Border Style="{StaticResource CardPanel}">
+        <TextBlock Text="Data Source" Style="{StaticResource SectionHeader}"
+                   Visibility="{Binding ShowSourceSelection, Converter={StaticResource BoolToVis}}" />
+        <Border Style="{StaticResource CardPanel}"
+                Visibility="{Binding ShowSourceSelection, Converter={StaticResource BoolToVis}}">
             <StackPanel>
                 <Grid>
                 <Grid.ColumnDefinitions>
@@ -115,41 +117,6 @@
         <TextBlock Text="Target Connection" Style="{StaticResource SectionHeader}" />
         <Border Style="{StaticResource CardPanel}">
             <StackPanel>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2*" />
-                        <ColumnDefinition Width="16" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Base URL" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="Auth Type" Style="{StaticResource FieldLabel}" />
-                        <ComboBox SelectedValue="{Binding AuthType}"
-                                  ItemsSource="{Binding Source={x:Static models:AuthTypeValues.All}}" />
-                    </StackPanel>
-                </Grid>
-
-                <Grid Margin="0,4,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="16" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="API Key / Public Key" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="API Secret" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding ApiSecret, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                </Grid>
-
                 <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -164,12 +131,124 @@
                                   ToolTip="Determines which API client implementation to use" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2">
+                    <StackPanel Grid.Column="2"
+                                Visibility="{Binding ShowApiConnectionFields, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="Content Type" Style="{StaticResource FieldLabel}" />
                         <TextBox Text="{Binding ContentType, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="e.g., application/json" />
                     </StackPanel>
                 </Grid>
+
+                <StackPanel Visibility="{Binding ShowApiConnectionFields, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Base URL" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Auth Type" Style="{StaticResource FieldLabel}" />
+                            <ComboBox SelectedValue="{Binding AuthType}"
+                                      ItemsSource="{Binding Source={x:Static models:AuthTypeValues.All}}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="API Key / Public Key" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="API Secret" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding ApiSecret, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0"
+                        Visibility="{Binding IsEmailProvider, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="Email Provider Settings" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="SMTP Host" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="SMTP Port" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="SMTP Username" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding SmtpUsername, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="SMTP Password" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding SmtpPassword, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="From Email" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding EmailFromAddress, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="To Email" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding EmailToAddress, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Subject Prefix" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding EmailSubjectPrefix, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+                                <CheckBox Content="Use SSL" IsChecked="{Binding SmtpUseSsl}" Margin="0,20,0,0" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <!-- Asset Panda: Account + Module discovery -->
                 <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="0,8,0,4" Margin="0,8,0,0"
@@ -230,7 +309,8 @@
         </Border>
 
         <!-- Assets Section -->
-        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                    Visibility="{Binding ShowSyncSections, Converter={StaticResource BoolToVis}}">
             <TextBlock Text="Assets (Computers)" Style="{StaticResource SectionHeader}" />
             <CheckBox Content="Enabled" IsChecked="{Binding AssetsEnabled}"
                       VerticalAlignment="Center" Margin="16,12,0,0" />
@@ -564,7 +644,8 @@
         </Border>
 
         <!-- Users Section -->
-        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                    Visibility="{Binding ShowSyncSections, Converter={StaticResource BoolToVis}}">
             <TextBlock Text="Users (Loanees)" Style="{StaticResource SectionHeader}" />
             <CheckBox Content="Enabled" IsChecked="{Binding UsersEnabled}"
                       VerticalAlignment="Center" Margin="16,12,0,0" />
@@ -853,8 +934,10 @@
         </Border>
 
         <!-- Schedule Section -->
-        <TextBlock Text="Schedule" Style="{StaticResource SectionHeader}" />
-        <Border Style="{StaticResource CardPanel}">
+        <TextBlock Text="Schedule" Style="{StaticResource SectionHeader}"
+                   Visibility="{Binding ShowSyncSections, Converter={StaticResource BoolToVis}}" />
+        <Border Style="{StaticResource CardPanel}"
+                Visibility="{Binding ShowSyncSections, Converter={StaticResource BoolToVis}}">
             <StackPanel>
                 <CheckBox Content="Run this target at service launch"
                           IsChecked="{Binding RunAtLaunch}" Margin="0,0,0,8" />

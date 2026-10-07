@@ -16,6 +16,7 @@ public static class PresetRegistry
         Register(SnipeIt);
         Register(AssetPanda);
         Register(SolarWinds);
+        Register(EmailSmtpTicket);
     }
 
     public static CloudPreset Reftab { get; } = new()
@@ -390,6 +391,48 @@ public static class PresetRegistry
         }
     };
 
+    public static CloudPreset EmailSmtpTicket { get; } = new()
+    {
+        Name = "Email (SMTP Ticket)",
+        ProviderType = "Email",
+        AuthType = AuthType.BasicAuth,
+        ContentType = "text/plain",
+        SmtpHost = "smtp.yourdomain.com",
+        SmtpPort = 587,
+        SmtpUseSsl = true,
+        SmtpUsername = string.Empty,
+        SmtpPassword = string.Empty,
+        EmailFromAddress = "noreply@yourdomain.com",
+        EmailToAddress = "tickets@yourdomain.com",
+        EmailSubjectPrefix = "Kiosk Ticket",
+        Assets = new PresetEndpoints
+        {
+            GetEndpoint = string.Empty,
+            PostEndpoint = string.Empty,
+            PutEndpoint = string.Empty,
+            ResponseItemsPath = "$",
+            CloudIdField = "id",
+            AdMatchField = string.Empty,
+            CloudMatchField = string.Empty,
+            UpdateMatchAdField = string.Empty,
+            UpdateMatchCloudField = string.Empty,
+            DefaultMappings = []
+        },
+        Users = new PresetEndpoints
+        {
+            GetEndpoint = string.Empty,
+            PostEndpoint = string.Empty,
+            PutEndpoint = string.Empty,
+            ResponseItemsPath = "$",
+            CloudIdField = "id",
+            AdMatchField = string.Empty,
+            CloudMatchField = string.Empty,
+            UpdateMatchAdField = string.Empty,
+            UpdateMatchCloudField = string.Empty,
+            DefaultMappings = []
+        }
+    };
+
     public static void Register(CloudPreset preset) => _presets[preset.Name] = preset;
 
     public static CloudPreset? GetByName(string name) =>
@@ -415,7 +458,15 @@ public static class PresetRegistry
                 ApiKeyHeader = preset.ApiKeyHeader,
                 ApiKeyFormat = preset.ApiKeyFormat,
                 HmacAlgorithm = preset.HmacAlgorithm,
-                ContentType = preset.ContentType
+                ContentType = preset.ContentType,
+                SmtpHost = preset.SmtpHost,
+                SmtpPort = preset.SmtpPort,
+                SmtpUseSsl = preset.SmtpUseSsl,
+                SmtpUsername = preset.SmtpUsername,
+                SmtpPassword = preset.SmtpPassword,
+                EmailFromAddress = preset.EmailFromAddress,
+                EmailToAddress = preset.EmailToAddress,
+                EmailSubjectPrefix = preset.EmailSubjectPrefix
             },
             Assets = new SyncCategoryConfig
             {

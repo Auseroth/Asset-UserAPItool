@@ -23,75 +23,149 @@
 
         <Border Grid.Row="0" Background="{StaticResource CardBrush}" Padding="16,12"
                 BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Left">
-                    <TextBlock Text="{Binding WindowTitle}" FontSize="22" FontWeight="SemiBold" />
-                    <TextBlock Text="Create and submit a check-in payload using the configured sync mappings."
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                    <TextBlock Text="{Binding WindowTitle}" FontSize="22" FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock Text="Submit an asset turn-in or support request using the Check-in Kiosk."
                                Margin="0,6,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextAlignment="Center" />
                 </StackPanel>
 
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="Close (Refresh)"
                             Click="CloseRefresh_Click"
                             Style="{StaticResource SecondaryButton}"
-                            FontSize="10"
-                            Padding="8,3"
-                            Margin="0,0,6,0" />
+                            FontSize="12"
+                            Padding="12,6"
+                            MinHeight="40"
+                            Margin="0,0,8,0" />
                     <Button Content="Admin Config"
                             Click="OpenConfiguration_Click"
                             Style="{StaticResource SecondaryButton}"
-                            FontSize="10"
-                            Padding="8,3" />
+                            FontSize="12"
+                            Padding="12,6"
+                            MinHeight="40" />
                 </StackPanel>
-            </DockPanel>
+            </Grid>
         </Border>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="16,12,16,0">
                 <Border Style="{StaticResource CardPanel}">
                     <StackPanel>
-                        <TextBlock Text="Scan or Enter Asset" Style="{StaticResource SectionHeader}" Margin="0,0,0,8" />
-                        <TextBlock Text="Enter an asset tag or serial number plus a check-in note. The kiosk writes a Check-in Kiosk source record and immediately sends it to configured cloud targets."
-                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <TextBlock Text="Request Intake" Style="{StaticResource SectionHeader}" Margin="0,0,0,8" FontSize="25" />
 
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="16" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="Asset Tag" Style="{StaticResource FieldLabel}" />
-                                <TextBox Text="{Binding AssetTag, UpdateSourceTrigger=PropertyChanged}" FontSize="20" Padding="10,8" />
-                            </StackPanel>
-
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Serial Number" Style="{StaticResource FieldLabel}" />
-                                <TextBox Text="{Binding SerialNumber, UpdateSourceTrigger=PropertyChanged}" FontSize="20" Padding="10,8" />
-                            </StackPanel>
-                        </Grid>
-
-                        <StackPanel Margin="0,10,0,0">
-                            <TextBlock Text="Check-In Note (required)" Style="{StaticResource FieldLabel}" />
-                            <TextBox Text="{Binding CheckInNote, UpdateSourceTrigger=PropertyChanged}"
-                                     MinHeight="70" AcceptsReturn="True" TextWrapping="Wrap"
-                                     VerticalScrollBarVisibility="Auto" />
+                        <StackPanel Margin="0,14,0,0">
+                            <TextBlock Style="{StaticResource FieldLabel}" FontSize="20">
+                                <Run Text="Are you turning in an asset? " />
+                                <Run Text="(required)" Foreground="Red" />
+                            </TextBlock>
+                            <ComboBox ItemsSource="{Binding AssetTurnInOptions}"
+                                      SelectedItem="{Binding TurningInAssetAnswer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      FontSize="20"
+                                      MinHeight="52"
+                                      Padding="10,8" />
                         </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                            <Button Content="Check In"
-                                    Command="{Binding CheckInCommand}"
-                                    IsDefault="True"
-                                    Style="{StaticResource PrimaryButton}"
-                                    Padding="22,8" />
-                            <TextBlock Text="{Binding StatusMessage}" Margin="14,0,0,0" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        <StackPanel Visibility="{Binding HasTurnInSelection, Converter={StaticResource BoolToVis}}">
+                            <Grid Margin="0,1,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Style="{StaticResource FieldLabel}">
+                                        <Run Text="First Name " />
+                                        <Run Text="(required)" Foreground="Red" />
+                                    </TextBlock>
+                                    <TextBox Text="{Binding FirstName, UpdateSourceTrigger=PropertyChanged}" FontSize="20" MinHeight="52" Padding="12,10" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Style="{StaticResource FieldLabel}">
+                                          <Run Text="Last Name " />
+                                          <Run Text="(required)" Foreground="Red" />
+                                    </TextBlock>
+                                    <TextBox Text="{Binding LastName, UpdateSourceTrigger=PropertyChanged}" FontSize="20" MinHeight="52" Padding="12,10" />
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Style="{StaticResource FieldLabel}">
+                                    <Run Text="Phone Number " />
+                                    <Run Text="(required)" Foreground="Red" />
+                                </TextBlock>
+                                <TextBox Text="{Binding PhoneNumber, UpdateSourceTrigger=PropertyChanged}" FontSize="20" MinHeight="52" Padding="12,10" />
+                            </StackPanel>
+
+                            <Grid Margin="0,10,0,0"
+                                  Visibility="{Binding IsTurningInAsset, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Asset Tag" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding AssetTag, UpdateSourceTrigger=PropertyChanged}" FontSize="22" MinHeight="56" Padding="12,10" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="1"
+                                        Margin="14,28"
+                                        FontSize="18"
+                                        FontWeight="SemiBold"
+                                        Foreground="{StaticResource TextSecondaryBrush}"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Center"
+                                        TextAlignment="Center">
+                                    <Run Text="(required)" Foreground="Red" />
+                                    <LineBreak />
+                                    <Run Text="--or--" />
+                                </TextBlock>
+
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="SN" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding SerialNumber, UpdateSourceTrigger=PropertyChanged}" FontSize="22" MinHeight="56" Padding="12,10" />
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Style="{StaticResource FieldLabel}">
+                                    <Run Text="Request/Issue Description " />
+                                    <Run Text="(required)" Foreground="Red" />
+                                </TextBlock>
+                                <TextBox Text="{Binding RequestIssueDescription, UpdateSourceTrigger=PropertyChanged}"
+                                         FontSize="18"
+                                         MinHeight="140" AcceptsReturn="True" TextWrapping="Wrap"
+                                         Padding="12,10"
+                                         VerticalScrollBarVisibility="Auto" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                                <Button Content="Submit Request"
+                                        Command="{Binding CheckInCommand}"
+                                        IsDefault="True"
+                                        Style="{StaticResource PrimaryButton}"
+                                        FontSize="20"
+                                        MinHeight="56"
+                                        Padding="28,12" />
+                                <TextBlock Text="{Binding StatusMessage}" Margin="16,0,0,0" VerticalAlignment="Center"
+                                           FontSize="16"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </Border>
-
             </StackPanel>
         </ScrollViewer>
 

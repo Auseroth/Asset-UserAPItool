@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using LdapCloudSync.Core.Interfaces;
 using LdapCloudSync.Core.Models;
@@ -29,38 +30,61 @@ public sealed class AssetCheckInService
     }
 
     public async Task<AssetCheckInResult> CheckInAsync(
+        bool isTurningInAsset,
+        string? firstName,
+        string? lastName,
+        string? phoneNumber,
         string? assetTag,
         string? serialNumber,
-        string? checkInReason,
+        string? requestDescription,
         CancellationToken cancellationToken = default)
     {
         var config = _configService.Current;
 
+        var cleanedFirstName = firstName?.Trim() ?? string.Empty;
+        var cleanedLastName = lastName?.Trim() ?? string.Empty;
+        var cleanedPhoneNumber = phoneNumber?.Trim() ?? string.Empty;
         var cleanedAssetTag = assetTag?.Trim() ?? string.Empty;
         var cleanedSerialNumber = serialNumber?.Trim() ?? string.Empty;
-        var cleanedReason = checkInReason?.Trim() ?? string.Empty;
+        var cleanedDescription = requestDescription?.Trim() ?? string.Empty;
 
-        if (string.IsNullOrWhiteSpace(cleanedAssetTag) && string.IsNullOrWhiteSpace(cleanedSerialNumber))
-            return AssetCheckInResult.Failure("Enter an asset tag or serial number before checking in.");
+        if (string.IsNullOrWhiteSpace(cleanedFirstName) || string.IsNullOrWhiteSpace(cleanedLastName))
+            return AssetCheckInResult.Failure("First name and last name are required.");
 
-        if (string.IsNullOrWhiteSpace(cleanedReason))
-            return AssetCheckInResult.Failure("Please enter a check-in note before submitting.");
+        if (string.IsNullOrWhiteSpace(cleanedPhoneNumber))
+            return AssetCheckInResult.Failure("Phone number is required.");
 
-        var sourceRecord = BuildSourceRecord(cleanedAssetTag, cleanedSerialNumber, cleanedReason);
+        if (isTurningInAsset && string.IsNullOrWhiteSpace(cleanedAssetTag) && string.IsNullOrWhiteSpace(cleanedSerialNumber))
+            return AssetCheckInResult.Failure("Enter an asset tag or SN before submitting a turn-in.");
+
+        if (string.IsNullOrWhiteSpace(cleanedDescription))
+            return AssetCheckInResult.Failure("Please enter a request/issue description before submitting.");
+
+        var transformedDescription = BuildDescription(cleanedFirstName, cleanedLastName, cleanedPhoneNumber, cleanedDescription);
+        var sourceRecord = BuildSourceRecord(
+            isTurningInAsset,
+            cleanedFirstName,
+            cleanedLastName,
+            cleanedPhoneNumber,
+            cleanedAssetTag,
+            cleanedSerialNumber,
+            transformedDescription);
+
         await SaveKioskSourceRecordAsync(sourceRecord);
 
         var kioskSourceId = $"{SourceFileService.FileSourcePrefix}{KioskConfig.AssetCheckInSourceFileName}";
         var eligibleTargets = config.CloudTargets
             .Where(t => t.Enabled)
             .Where(t => string.Equals(t.SourceId, kioskSourceId, StringComparison.OrdinalIgnoreCase))
-            .Where(t => t.Assets.Enabled)
-            .Where(t => !t.Users.Enabled)
-            .Where(t => string.Equals(t.ProviderType, "Reftab", StringComparison.OrdinalIgnoreCase)
-                || t.Assets.FieldMappings.Count > 0)
+            .Where(t => IsEligibleTarget(t, isTurningInAsset))
             .ToList();
 
         if (eligibleTargets.Count == 0)
-            return AssetCheckInResult.Failure("No enabled cloud targets are configured to use source 'Check-in Kiosk'.");
+        {
+            return isTurningInAsset
+                ? AssetCheckInResult.Failure("No enabled API targets are configured for Check-in Kiosk asset turn-ins.")
+                : AssetCheckInResult.Failure("No enabled Email targets are configured for Check-in Kiosk request tickets.");
+        }
 
         var aggregate = new SyncResult();
         var targetNames = new List<string>();
@@ -72,34 +96,13 @@ public sealed class AssetCheckInService
 
             try
             {
-                SyncResult targetResult;
-
-                // Reftab maintenance kickoff mode:
-                // resolve the asset by aid, preserve the full asset payload, modify only
-                // maintenance fields, then PUT the full payload back.
-                if (string.Equals(target.ProviderType, "Reftab", StringComparison.OrdinalIgnoreCase)
-                    && !string.IsNullOrWhiteSpace(cleanedAssetTag))
-                {
-                    using var reftabClient = new ReftabClient(target, null, _log);
-                    targetResult = await reftabClient.UpdateAssetMaintenanceByAidAsync(
-                        cleanedAssetTag,
-                        cleanedReason,
-                        maintenanceTriggerValue: "Yes");
-                }
-                else
-                {
-                    var engine = new TransformEngine(_log);
-                    var cloudRecord = engine.TransformSingle(sourceRecord, target.Assets.FieldMappings);
-                    if (cloudRecord.Count == 0)
-                    {
-                        aggregate.Failed++;
-                        aggregate.Errors.Add($"[{target.Name}] No mapped asset fields were produced from kiosk input.");
-                        continue;
-                    }
-
-                    using var client = CloudClientFactory.CreateClient(target, _log);
-                    targetResult = await client.PushRecordsAsync("assets", [CloneCloudRecord(cloudRecord)]);
-                }
+                var targetResult = await PushToTargetAsync(
+                    target,
+                    isTurningInAsset,
+                    cleanedAssetTag,
+                    cleanedDescription,
+                    transformedDescription,
+                    sourceRecord);
 
                 aggregate.Created += targetResult.Created;
                 aggregate.Updated += targetResult.Updated;
@@ -120,7 +123,8 @@ public sealed class AssetCheckInService
         var successfulWrites = aggregate.Created + aggregate.Updated;
         if (successfulWrites > 0 && aggregate.Failed == 0)
         {
-            var message = $"Check-in complete. Sent to {eligibleTargets.Count} target(s): {string.Join(", ", targetNames)}.";
+            var modeText = isTurningInAsset ? "asset turn-in" : "support ticket";
+            var message = $"Submitted {modeText} to {eligibleTargets.Count} target(s): {string.Join(", ", targetNames)}.";
             return new AssetCheckInResult
             {
                 Success = true,
@@ -138,26 +142,100 @@ public sealed class AssetCheckInService
         return new AssetCheckInResult
         {
             Success = false,
-            Message = $"Check-in failed. {failureText}",
+            Message = $"Submission failed. {failureText}",
             TargetResponseBody = aggregate.LastSuccessResponseBody,
             SyncResult = aggregate,
             TargetName = string.Join(", ", targetNames)
         };
     }
 
+    private async Task<SyncResult> PushToTargetAsync(
+        CloudTargetConfig target,
+        bool isTurningInAsset,
+        string cleanedAssetTag,
+        string requestDescription,
+        string transformedDescription,
+        Dictionary<string, string> sourceRecord)
+    {
+        if (!isTurningInAsset)
+        {
+            var emailRecord = BuildEmailTicketRecord(sourceRecord, requestDescription);
+            using var emailClient = CloudClientFactory.CreateClient(target, _log);
+            return await emailClient.PushRecordsAsync("tickets", [emailRecord]);
+        }
+
+        if (string.Equals(target.ProviderType, "Reftab", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(cleanedAssetTag))
+        {
+            using var reftabClient = new ReftabClient(target, null, _log);
+            return await reftabClient.UpdateAssetMaintenanceByAidAsync(
+                cleanedAssetTag,
+                transformedDescription,
+                maintenanceTriggerValue: "Yes");
+        }
+
+        var engine = new TransformEngine(_log);
+        var cloudRecord = engine.TransformSingle(sourceRecord, target.Assets.FieldMappings);
+        if (cloudRecord.Count == 0)
+        {
+            return new SyncResult
+            {
+                Failed = 1,
+                Errors = [$"No mapped asset fields were produced from kiosk input."]
+            };
+        }
+
+        using var client = CloudClientFactory.CreateClient(target, _log);
+        return await client.PushRecordsAsync("assets", [CloneCloudRecord(cloudRecord)]);
+    }
+
+    private static bool IsEligibleTarget(CloudTargetConfig target, bool isTurningInAsset)
+    {
+        var isEmailTarget = string.Equals(target.ProviderType, "Email", StringComparison.OrdinalIgnoreCase);
+        if (!isTurningInAsset)
+            return isEmailTarget;
+
+        if (isEmailTarget)
+            return false;
+
+        return target.Assets.Enabled
+            && !target.Users.Enabled
+            && (string.Equals(target.ProviderType, "Reftab", StringComparison.OrdinalIgnoreCase)
+                || target.Assets.FieldMappings.Count > 0);
+    }
+
+    private static string BuildDescription(
+        string firstName,
+        string lastName,
+        string phoneNumber,
+        string requestDescription)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Requester: {firstName} {lastName}");
+        builder.AppendLine($"Phone: {phoneNumber}");
+        builder.AppendLine();
+        builder.Append(requestDescription);
+        return builder.ToString().Trim();
+    }
+
     private static Dictionary<string, string> BuildSourceRecord(
+        bool isTurningInAsset,
+        string firstName,
+        string lastName,
+        string phoneNumber,
         string assetTag,
         string serialNumber,
-        string checkInReason)
+        string description)
     {
-        // Keep a stable kiosk payload template so source-field discovery always
-        // shows these fields even when a value is blank in the latest check-in.
         return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
+            ["first_name"] = firstName,
+            ["last_name"] = lastName,
+            ["phone_number"] = phoneNumber,
             ["asset_tag"] = assetTag,
             ["serial_number"] = serialNumber,
-            ["check_in_note"] = checkInReason,
-            ["maintenance_trigger"] = "Yes"
+            ["check_in_note"] = description,
+            ["maintenance_trigger"] = isTurningInAsset ? "Yes" : "No"
         };
     }
 
@@ -176,15 +254,41 @@ public sealed class AssetCheckInService
     private static Dictionary<string, object> CloneCloudRecord(Dictionary<string, object> cloudRecord)
         => cloudRecord.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
 
-    }
-
-    public sealed class AssetCheckInResult
+    private static Dictionary<string, object> BuildEmailTicketRecord(
+        Dictionary<string, string> sourceRecord,
+        string requestDescription)
     {
-        public bool Success { get; set; }
-        public string Message { get; set; } = string.Empty;
-        public string TargetResponseBody { get; set; } = string.Empty;
-        public string TargetName { get; set; } = string.Empty;
-        public SyncResult SyncResult { get; set; } = new();
+        sourceRecord.TryGetValue("first_name", out var firstName);
+        sourceRecord.TryGetValue("last_name", out var lastName);
+        sourceRecord.TryGetValue("phone_number", out var phoneNumber);
+
+        var requesterName = string.Join(" ", new[] { firstName, lastName }.Where(v => !string.IsNullOrWhiteSpace(v))).Trim();
+        var safeRequester = string.IsNullOrWhiteSpace(requesterName) ? "Unknown Requester" : requesterName;
+
+        var body = new StringBuilder();
+        body.AppendLine("New kiosk support request");
+        body.AppendLine();
+        body.AppendLine($"Requester: {safeRequester}");
+        body.AppendLine($"Phone: {phoneNumber}");
+        body.AppendLine();
+        body.AppendLine("Request/Issue Description:");
+        body.AppendLine(requestDescription);
+
+        return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["email_subject"] = $"Kiosk Request - {safeRequester}",
+            ["email_body"] = body.ToString().Trim()
+        };
+    }
+}
+
+public sealed class AssetCheckInResult
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public string TargetResponseBody { get; set; } = string.Empty;
+    public string TargetName { get; set; } = string.Empty;
+    public SyncResult SyncResult { get; set; } = new();
 
     public static AssetCheckInResult Failure(string message) => new()
     {

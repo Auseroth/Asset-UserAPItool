@@ -20,7 +20,9 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         RefreshSummary();
     }
 
-    private string _windowTitle = "Asset Check-In";
+    public IReadOnlyList<string> AssetTurnInOptions { get; } = ["Yes", "No"];
+
+    private string _windowTitle = "Create A Ticket Or Drop Off An Asset";
     public string WindowTitle
     {
         get => _windowTitle;
@@ -55,6 +57,52 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         set => SetProperty(ref _autoCloseSeconds, value);
     }
 
+    private string _turningInAssetAnswer = string.Empty;
+    public string TurningInAssetAnswer
+    {
+        get => _turningInAssetAnswer;
+        set
+        {
+            if (!SetProperty(ref _turningInAssetAnswer, value))
+                return;
+
+            OnPropertyChanged(nameof(HasTurnInSelection));
+            OnPropertyChanged(nameof(IsTurningInAsset));
+            if (!IsTurningInAsset)
+            {
+                AssetTag = string.Empty;
+                SerialNumber = string.Empty;
+            }
+        }
+    }
+
+    public bool HasTurnInSelection =>
+        string.Equals(TurningInAssetAnswer, "Yes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(TurningInAssetAnswer, "No", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsTurningInAsset => string.Equals(TurningInAssetAnswer, "Yes", StringComparison.OrdinalIgnoreCase);
+
+    private string _firstName = string.Empty;
+    public string FirstName
+    {
+        get => _firstName;
+        set => SetProperty(ref _firstName, NormalizeName(value));
+    }
+
+    private string _lastName = string.Empty;
+    public string LastName
+    {
+        get => _lastName;
+        set => SetProperty(ref _lastName, NormalizeName(value));
+    }
+
+    private string _phoneNumber = string.Empty;
+    public string PhoneNumber
+    {
+        get => _phoneNumber;
+        set => SetProperty(ref _phoneNumber, FormatPhoneNumber(value));
+    }
+
     private string _assetTag = string.Empty;
     public string AssetTag
     {
@@ -69,11 +117,11 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         set => SetProperty(ref _serialNumber, value);
     }
 
-    private string _checkInNote = string.Empty;
-    public string CheckInNote
+    private string _requestIssueDescription = string.Empty;
+    public string RequestIssueDescription
     {
-        get => _checkInNote;
-        set => SetProperty(ref _checkInNote, value);
+        get => _requestIssueDescription;
+        set => SetProperty(ref _requestIssueDescription, value);
     }
 
     private string _statusMessage = "Ready.";
@@ -82,7 +130,6 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         get => _statusMessage;
         set => SetProperty(ref _statusMessage, value);
     }
-
 
     private bool _isBusy;
     public bool IsBusy
@@ -100,8 +147,6 @@ public sealed class AssetCheckInViewModel : ViewModelBase
     {
         var kiosk = _configService.Current.Kiosk ?? new KioskConfig();
 
-        // Keep operator-facing title fixed even if old config has legacy wording.
-        WindowTitle = "Asset Check-In";
 
         LaunchArgument = string.IsNullOrWhiteSpace(kiosk.AssetCheckInLaunchArgument)
             ? KioskConfig.DefaultAssetCheckInArgument
@@ -110,8 +155,9 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         var kioskSourceId = $"{SourceFileService.FileSourcePrefix}{KioskConfig.AssetCheckInSourceFileName}";
         var targetNames = _configService.Current.CloudTargets
             .Where(t => t.Enabled)
-            .Where(t => t.Assets.Enabled && t.Assets.FieldMappings.Count > 0)
             .Where(t => string.Equals(t.SourceId, kioskSourceId, StringComparison.OrdinalIgnoreCase))
+            .Where(t => string.Equals(t.ProviderType, "Email", StringComparison.OrdinalIgnoreCase)
+                || (t.Assets.Enabled && t.Assets.FieldMappings.Count > 0))
             .Select(t => t.Name)
             .ToList();
 
@@ -129,41 +175,58 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         {
             IsBusy = true;
             RefreshSummary();
-            StatusMessage = "Submitting check-in...";
+            StatusMessage = "Submitting request...";
 
-            var submissionKey = BuildSubmissionKey(AssetTag, SerialNumber);
-            if (IsBlockedDuplicate(submissionKey))
+            if (!HasTurnInSelection)
             {
-                var retrySeconds = GetRemainingGuardSeconds();
-                StatusMessage = $"Duplicate blocked. Wait {retrySeconds}s before resubmitting the same scan.";
+                StatusMessage = "Select Yes or No for 'Are you turning in an asset?' before submitting.";
                 return;
             }
 
-            var result = await _assetCheckInService.CheckInAsync(AssetTag, SerialNumber, CheckInNote);
-            StatusMessage = result.Success ? "Check-in completed." : "Check-in failed.";
-
-            if (result.Success)
+            var submissionKey = BuildSubmissionKey();
+            if (IsBlockedDuplicate(submissionKey))
             {
-                _lastSubmissionKey = submissionKey;
-                _lastSubmissionUtc = DateTimeOffset.UtcNow;
+                var retrySeconds = GetRemainingGuardSeconds();
+                StatusMessage = $"Duplicate blocked. Wait {retrySeconds}s before resubmitting the same request.";
+                return;
+            }
 
-                AssetTag = string.Empty;
-                SerialNumber = string.Empty;
-                CheckInNote = string.Empty;
+            var result = await _assetCheckInService.CheckInAsync(
+                IsTurningInAsset,
+                FirstName,
+                LastName,
+                PhoneNumber,
+                AssetTag,
+                SerialNumber,
+                RequestIssueDescription);
 
-                CheckInCompleted?.Invoke("Check-in complete.");
+            StatusMessage = result.Message;
 
-                if (AutoCloseSeconds > 0)
-                {
-                    StatusMessage = $"Check-in completed. Closing in {AutoCloseSeconds}s...";
-                    await Task.Delay(TimeSpan.FromSeconds(AutoCloseSeconds));
-                    CloseRequested?.Invoke();
-                }
+            if (!result.Success)
+                return;
+
+            _lastSubmissionKey = submissionKey;
+            _lastSubmissionUtc = DateTimeOffset.UtcNow;
+
+            FirstName = string.Empty;
+            LastName = string.Empty;
+            PhoneNumber = string.Empty;
+            AssetTag = string.Empty;
+            SerialNumber = string.Empty;
+            RequestIssueDescription = string.Empty;
+
+            CheckInCompleted?.Invoke(string.IsNullOrWhiteSpace(result.Message) ? "Request submitted." : result.Message);
+
+            if (AutoCloseSeconds > 0)
+            {
+                StatusMessage = $"Submitted. Closing in {AutoCloseSeconds}s...";
+                await Task.Delay(TimeSpan.FromSeconds(AutoCloseSeconds));
+                CloseRequested?.Invoke();
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Check-in failed: {ex.Message}";
+            StatusMessage = $"Submission failed: {ex.Message}";
         }
         finally
         {
@@ -191,6 +254,55 @@ public sealed class AssetCheckInViewModel : ViewModelBase
         return Math.Max(1, (int)Math.Ceiling(remaining.TotalSeconds));
     }
 
-    private static string BuildSubmissionKey(string assetTag, string serialNumber)
-        => $"{assetTag?.Trim()}|{serialNumber?.Trim()}";
+    private string BuildSubmissionKey()
+    {
+        if (IsTurningInAsset)
+            return $"YES|{AssetTag.Trim()}|{SerialNumber.Trim()}|{FirstName.Trim()}|{LastName.Trim()}|{PhoneNumber.Trim()}|{RequestIssueDescription.Trim()}";
+
+        return $"NO|{FirstName.Trim()}|{LastName.Trim()}|{PhoneNumber.Trim()}|{RequestIssueDescription.Trim()}";
+    }
+
+    private static string NormalizeName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var chars = value.Trim().ToLowerInvariant().ToCharArray();
+        var capitalizeNext = true;
+
+        for (var i = 0; i < chars.Length; i++)
+        {
+            if (!char.IsLetter(chars[i]))
+            {
+                if (chars[i] is ' ' or '-' or '\'')
+                    capitalizeNext = true;
+
+                continue;
+            }
+
+            if (capitalizeNext)
+            {
+                chars[i] = char.ToUpperInvariant(chars[i]);
+                capitalizeNext = false;
+            }
+        }
+
+        return new string(chars);
+    }
+
+    private static string FormatPhoneNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var digitsOnly = new string(value.Where(char.IsDigit).Take(10).ToArray());
+
+        if (digitsOnly.Length <= 3)
+            return digitsOnly;
+
+        if (digitsOnly.Length <= 6)
+            return $"{digitsOnly[..3]}-{digitsOnly[3..]}";
+
+        return $"{digitsOnly[..3]}-{digitsOnly[3..6]}-{digitsOnly[6..]}";
+    }
 }

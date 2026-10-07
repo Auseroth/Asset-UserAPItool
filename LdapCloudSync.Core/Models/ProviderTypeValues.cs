@@ -11,6 +11,7 @@ public static class ProviderTypeValues
         "AssetPanda",
         "SolarWinds",
         "SnipeIT",
+        "Email",
         "Generic (Standard REST)"
     ];
 }
